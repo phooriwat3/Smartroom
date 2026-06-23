@@ -839,7 +839,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         {t.confirmed}
                                     </span>
                                 )}
-                                {(booking.status === BookingStatus.REJECTED || !booking.status) && booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.CONFIRMED && (
+                                {booking.status === BookingStatus.VERIFIED && (
+                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
+                                        {language === 'th' ? 'ยืนยันแล้ว' : 'Verified'}
+                                    </span>
+                                )}
+                                {(booking.status === BookingStatus.REJECTED || !booking.status) && booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.VERIFIED && (
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
                                         {language === 'th' ? "ปฏิเสธ" : "Rejected"}
                                     </span>

@@ -7,15 +7,18 @@ import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
 import AIAssistant from './components/AIAssistant';
 import ConfirmationModal from './components/ConfirmationModal';
+import VerifyBookingPage from './components/VerifyBookingPage';
 import { TRANSLATIONS, getEffectiveRoomStatus, isRoomClosureExpired, isRoomClosedAt, isRoomCurrentlyClosed } from './translations';
 import { LayoutGrid, Calendar, BarChart3, Settings, Check, XCircle, AlertCircle, BookOpen, Menu, X } from 'lucide-react';
 import { TermsModal, AccessDeniedOverlay } from './components/TermsModal';
 import { UserGuideModal } from './components/UserGuideModal';
 import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
-import { db, auth, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
 
 type AppView = 'grid' | 'dashboard' | 'admin';
+type RouteMode = 'app' | 'verify';
 
 const USER_DEFAULT_VIEW: AppView = 'dashboard';
 
@@ -25,7 +28,29 @@ const isAdminRoutePath = (path?: string) => {
   return normalizedPath === '/admin';
 };
 
-const App: React.FC = () => {
+const getRouteMode = (path?: string): RouteMode => {
+  const routePath = path ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
+  const normalizedPath = routePath.replace(/\/+$/, '') || '/';
+  if (normalizedPath === '/verify') return 'verify';
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('verify') === 'booking') return 'verify';
+  }
+  return 'app';
+};
+
+const isYageoEmail = (email?: string) => /^[^\s@]+@yageo\.com$/i.test((email || '').trim());
+
+const getStoredLanguage = (): 'th' | 'en' => {
+  try {
+    const saved = localStorage.getItem('smartroom_lang');
+    return (saved === 'th' || saved === 'en') ? saved : 'th';
+  } catch (e) {
+    return 'th';
+  }
+};
+
+const SmartRoomApplication: React.FC = () => {
   // --- LANGUAGE STATE ---
   const [language, setLanguage] = useState<'th' | 'en'>(() => {
     try {
@@ -53,6 +78,7 @@ const App: React.FC = () => {
   // Ref to track IDs that admin deleted locally — prevents onSnapshot from restoring them (no stale closure)
   const deletedBookingIdsRef = useRef<Set<string>>(new Set());
   const expiredClosureCleanupKeysRef = useRef<Set<string>>(new Set());
+  const noShowRequestIdsRef = useRef<Set<string>>(new Set());
   const [roomStatusNow, setRoomStatusNow] = useState<Date>(() => new Date());
 
   const getClosureCleanupKey = (room: Room) => [
@@ -372,6 +398,7 @@ const App: React.FC = () => {
       const nowTime = new Date();
       const bookingsToCancel = bookings.filter(b => {
         if (b.status === BookingStatus.REJECTED || b.status === BookingStatus.NO_SHOW) return false;
+        if (noShowRequestIdsRef.current.has(b.id)) return false;
         if (b.actualStartTime) return false; // Already checked in
         
         const cutoffTime = new Date(b.startTime.getTime() + 15 * 60 * 1000);
@@ -380,15 +407,15 @@ const App: React.FC = () => {
 
       for (const booking of bookingsToCancel) {
         console.log(`Marking booking ${booking.id} (${booking.title}) as NO_SHOW - not checked in within 15 minutes.`);
+        noShowRequestIdsRef.current.add(booking.id);
         try {
-          await updateDoc(doc(db, 'bookings', booking.id), {
-            status: BookingStatus.NO_SHOW
-          });
-        } catch (e) {
-          console.error("Failed to update booking to NO_SHOW:", e);
+          await markBookingNoShow(booking.id);
           setBookings(prev => prev.map(b => (
             b.id === booking.id ? { ...b, status: BookingStatus.NO_SHOW } : b
           )));
+        } catch (e) {
+          console.error("Failed to update booking to NO_SHOW:", e);
+          noShowRequestIdsRef.current.delete(booking.id);
         }
       }
     };
@@ -740,6 +767,24 @@ const App: React.FC = () => {
     });
   };
 
+  const sendVerificationEmail = async (bookingId: string, email?: string) => {
+    if (!isYageoEmail(email)) {
+      return;
+    }
+
+    const sendEmail = httpsCallable(functions, 'sendBookingVerificationEmail');
+    await sendEmail({
+      bookingId,
+      email: email!.trim().toLowerCase(),
+      origin: window.location.origin,
+    });
+  };
+
+  const markBookingNoShow = async (bookingId: string) => {
+    const markNoShow = httpsCallable(functions, 'markBookingNoShow');
+    await markNoShow({ bookingId });
+  };
+
   const handleConfirmBooking = async (roomOrBookingData: any, optionalData?: { title: string; organizer: string; department: string; employeeId: string; date: string; selectedHours: number[] }): Promise<boolean> => {
     try {
       if (optionalData === undefined) {
@@ -791,7 +836,7 @@ const App: React.FC = () => {
           return false;
         }
 
-        const newBooking = {
+        const newBooking: any = {
           id: newBookingId,
           roomId: bookingData.roomId,
           title: bookingData.title,
@@ -805,8 +850,32 @@ const App: React.FC = () => {
           createdAt: new Date()
         };
 
+        if (isYageoEmail(bookingData.email)) {
+          newBooking.email = bookingData.email.trim().toLowerCase();
+        }
+
         await setDoc(doc(db, 'bookings', newBookingId), newBooking);
-        showNotification(t.bookingConfirmedOk, 'success');
+        try {
+          await sendVerificationEmail(newBookingId, newBooking.email);
+          showNotification(t.bookingConfirmedOk, 'success');
+        } catch (emailError) {
+          const emailFailure = {
+            code: (emailError as any)?.code,
+            message: (emailError as any)?.message,
+            details: (emailError as any)?.details,
+          };
+          console.error(
+            "Booking was created, but verification email failed:",
+            JSON.stringify(emailFailure, null, 2),
+            emailError
+          );
+          showNotification(
+            language === 'th'
+              ? 'บันทึกการจองสำเร็จ แต่ส่งอีเมลยืนยันไม่สำเร็จ กรุณาตรวจสอบ Power Automate'
+              : `Booking saved, but the verification email could not be sent. ${emailFailure.code || 'Check Power Automate configuration.'}`,
+            'error'
+          );
+        }
         return true;
       } else {
         // Dual argument structure (Legacy / modal form usage)
@@ -1276,6 +1345,23 @@ const App: React.FC = () => {
       )}
     </div>
   );
+};
+
+const App: React.FC = () => {
+  const [routeMode, setRouteMode] = useState<RouteMode>(() => getRouteMode());
+  const [language] = useState<'th' | 'en'>(() => getStoredLanguage());
+
+  useEffect(() => {
+    const handlePopState = () => setRouteMode(getRouteMode());
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  if (routeMode === 'verify') {
+    return <VerifyBookingPage language={language} />;
+  }
+
+  return <SmartRoomApplication />;
 };
 
 export default App;

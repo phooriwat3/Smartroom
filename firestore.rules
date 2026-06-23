@@ -89,7 +89,8 @@ service cloud.firestore {
              data.startTime is timestamp &&
              data.endTime is timestamp && data.endTime > data.startTime &&
              isWithinBookingHours(data) &&
-             data.status is string && (data.status == 'PENDING' || data.status == 'CONFIRMED' || data.status == 'REJECTED' || data.status == 'NO_SHOW');
+             data.status is string && (data.status == 'PENDING' || data.status == 'CONFIRMED' || data.status == 'VERIFIED' || data.status == 'REJECTED' || data.status == 'NO_SHOW') &&
+             (!data.keys().hasAny(['email']) || (data.email is string && data.email.size() <= 254 && data.email.matches('^[^\\s@]+@yageo\\.com$')));
     }
 
     // Base validation helper for room maintenance history
@@ -129,6 +130,7 @@ service cloud.firestore {
       allow create: if (bookingId in ['b1', 'b2'] && isValidId(bookingId) && incoming().id == bookingId) ||
                        (isValidId(bookingId) && 
                         isValidBooking(incoming()) && 
+                        (incoming().status == 'PENDING' || incoming().status == 'CONFIRMED') &&
                         incoming().id == bookingId && 
                         (exists(/databases/$(database)/documents/rooms/$(incoming().roomId)) || incoming().roomId in ['m1', 'm2', 'r1', 'r2', 'r3', 't1']));
 

@@ -125,6 +125,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [organizer, setOrganizer] = useState('');
   const [department, setDepartment] = useState('');
   const [employeeId, setEmployeeId] = useState('');
+  const [email, setEmail] = useState('');
   const [deskNumber, setDeskNumber] = useState('');
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedHours, setSelectedHours] = useState<number[]>([]);
@@ -150,6 +151,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     setSelectedHours([]);
     setBookingError(null);
     setTitle('');
+    setEmail('');
   }, [selectedRoomId, dateStr]);
 
   // Define bookable blocks: 07:00 - 19:00, with the last selectable block ending at 19:00.
@@ -494,6 +496,17 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      setBookingError(language === 'th' ? 'กรุณากรอกอีเมล YAGEO' : 'Please enter a YAGEO email address.');
+      return;
+    }
+
+    if (!/^[^\s@]+@yageo\.com$/i.test(normalizedEmail)) {
+      setBookingError(language === 'th' ? 'กรุณาใช้อีเมล @yageo.com เท่านั้น' : 'Please use a valid @yageo.com email address.');
+      return;
+    }
+
     if (!department) {
       setBookingError(language === 'th' ? 'กรุณาเลือกแผนกผู้ใช้สิทธิ์' : 'Please select a department.');
       return;
@@ -530,6 +543,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         organizer: organizer.trim(),
         department,
         employeeId: employeeId.trim(),
+        email: normalizedEmail,
         deskNumber: deskNumber.trim(),
         startTime,
         endTime,
@@ -543,6 +557,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         setTitle('');
         setOrganizer('');
         setEmployeeId('');
+        setEmail('');
         setDepartment('');
         setDeskNumber('');
         setIsDetailsModalOpen(false);
@@ -1633,6 +1648,20 @@ const Dashboard: React.FC<DashboardProps> = ({
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  {language === 'th' ? 'อีเมล YAGEO' : 'YAGEO Email'} <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@yageo.com"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
+                />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
