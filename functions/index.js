@@ -15,7 +15,8 @@ const DEFAULT_YAGEO_EMAIL_DOMAIN = "yageo.com";
 const TOKEN_BYTES = 32;
 const TOKEN_TTL_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const EMAIL_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
-const APP_BASE_URL = process.env.APP_BASE_URL || "";
+const DEFAULT_APP_BASE_URL = "https://tokinsmartroom.web.app";
+const APP_BASE_URL = (process.env.APP_BASE_URL || DEFAULT_APP_BASE_URL).replace(/\/+$/, "");
 const APP_CORS_ORIGINS = [
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,

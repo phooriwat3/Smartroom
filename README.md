@@ -19,4 +19,4 @@ View your app in AI Studio: https://ai.studio/apps/28114784-a066-482c-9738-dfb6c
 3. Run the app:
    `npm run dev`
 
-For LAN access, open the app from the host PC IP and port, for example `http://192.168.x.x:3000`. Booking verification emails use the same LAN origin that created the booking.
+The Firebase Hosting site for this app is `https://tokinsmartroom.web.app`. Booking verification emails use this Firebase domain by default. For another host name, set `VITE_APP_BASE_URL` for the Vite app and `APP_BASE_URL` for Cloud Functions.
