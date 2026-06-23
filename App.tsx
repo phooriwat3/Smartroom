@@ -21,6 +21,8 @@ type AppView = 'grid' | 'dashboard' | 'admin';
 type RouteMode = 'app' | 'verify';
 
 const USER_DEFAULT_VIEW: AppView = 'dashboard';
+const DEFAULT_APP_BASE_URL = 'https://tokinsmartroom.web.app';
+const APP_BASE_URL = ((import.meta as any).env?.VITE_APP_BASE_URL || DEFAULT_APP_BASE_URL).trim().replace(/\/+$/, '');
 
 const isAdminRoutePath = (path?: string) => {
   const routePath = path ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
@@ -40,6 +42,8 @@ const getRouteMode = (path?: string): RouteMode => {
 };
 
 const isYageoEmail = (email?: string) => /^[^\s@]+@yageo\.com$/i.test((email || '').trim());
+
+const getVerificationOrigin = () => APP_BASE_URL || (typeof window !== 'undefined' ? window.location.origin : '');
 
 const getStoredLanguage = (): 'th' | 'en' => {
   try {
@@ -776,7 +780,7 @@ const SmartRoomApplication: React.FC = () => {
     await sendEmail({
       bookingId,
       email: email!.trim().toLowerCase(),
-      origin: window.location.origin,
+      origin: getVerificationOrigin(),
     });
   };
 

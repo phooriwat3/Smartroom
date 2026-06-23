@@ -3,6 +3,7 @@
     "source": "functions"
   },
   "hosting": {
+    "site": "tokinsmartroom",
     "public": "dist",
     "ignore": [
       "firebase.json",
