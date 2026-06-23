@@ -7,6 +7,7 @@ export enum RoomType {
 export enum BookingStatus {
   PENDING = 'PENDING',
   CONFIRMED = 'CONFIRMED',
+  VERIFIED = 'VERIFIED',
   REJECTED = 'REJECTED',
   NO_SHOW = 'NO_SHOW'
 }
@@ -59,6 +60,7 @@ export interface Booking {
   organizer: string;
   department: string;
   employeeId: string;
+  email?: string;
   startTime: Date; // JavaScript Date object
   endTime: Date;   // JavaScript Date object
   status: BookingStatus;
@@ -66,6 +68,11 @@ export interface Booking {
   createdAt?: any;
   actualStartTime?: Date;
   actualEndTime?: Date;
+  noShowMarkedAt?: any;
+  verifiedAt?: any;
+  verificationEmailStatus?: 'queued' | 'sent' | 'failed';
+  verificationEmailFailedAt?: any;
+  verifyUrl?: string;
 }
 
 export interface ChatMessage {

@@ -2,6 +2,20 @@
   "functions": {
     "source": "functions"
   },
+  "hosting": {
+    "public": "dist",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ],
+    "rewrites": [
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  },
   "firestore": [
     {
       "database": "ai-studio-28114784-a066-482c-9738-dfb6c9d68ce0",
