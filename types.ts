@@ -75,6 +75,25 @@ export interface Booking {
   verifyUrl?: string;
 }
 
+export type EmailSentStatus = 'successful' | 'failed';
+
+export interface EmailSentHistoryRecord {
+  id: string;
+  recipientEmail: string;
+  recipientName?: string;
+  subject: string;
+  purpose: string;
+  sentAt: Date;
+  status: EmailSentStatus;
+  relatedBookingId?: string;
+  relatedBookingTitle?: string;
+  relatedRoomId?: string;
+  relatedRoomName?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt?: any;
+}
+
 export interface ChatMessage {
   role: 'user' | 'model';
   text: string;

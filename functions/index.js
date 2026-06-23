@@ -8,6 +8,10 @@ const DATABASE_ID = "ai-studio-28114784-a066-482c-9738-dfb6c9d68ce0";
 const BOOTSTRAP_SUPER_ADMINS = [
   { id: "admin1", username: "admin", password: "123", role: "SUPER_ADMIN" },
 ];
+const BOOTSTRAP_ADMINS = [
+  ...BOOTSTRAP_SUPER_ADMINS,
+  { id: "approver1", username: "approver", password: "123", role: "APPROVER" },
+];
 
 admin.initializeApp();
 const db = getFirestore(DATABASE_ID);
@@ -235,6 +239,66 @@ async function sendPowerAutomateEmail(payload) {
   }
 }
 
+async function getRoomName(roomId) {
+  if (!roomId || typeof roomId !== "string") return "";
+
+  try {
+    const roomSnap = await db.collection("rooms").doc(roomId).get();
+    if (roomSnap.exists) {
+      const room = roomSnap.data() || {};
+      return typeof room.name === "string" ? room.name : "";
+    }
+  } catch (error) {
+    console.warn("Could not resolve room name for email history", {
+      roomId,
+      message: error && error.message,
+    });
+  }
+
+  return "";
+}
+
+async function recordEmailSentHistory(history) {
+  const historyRef = db.collection("emailSentHistory").doc();
+  await historyRef.set({
+    id: historyRef.id,
+    recipientEmail: history.recipientEmail || "",
+    recipientName: history.recipientName || "",
+    subject: history.subject || "",
+    purpose: history.purpose || "Email",
+    sentAt: FieldValue.serverTimestamp(),
+    status: history.status,
+    relatedBookingId: history.relatedBookingId || "",
+    relatedBookingTitle: history.relatedBookingTitle || "",
+    relatedRoomId: history.relatedRoomId || "",
+    relatedRoomName: history.relatedRoomName || "",
+    errorCode: history.errorCode || "",
+    errorMessage: history.errorMessage || "",
+    createdAt: FieldValue.serverTimestamp(),
+  });
+  return historyRef.id;
+}
+
+function serializeEmailHistoryRecord(snap) {
+  const data = snap.data() || {};
+  return {
+    id: data.id || snap.id,
+    recipientEmail: data.recipientEmail || "",
+    recipientName: data.recipientName || "",
+    subject: data.subject || "",
+    purpose: data.purpose || "",
+    sentAt: serializeDate(data.sentAt || data.createdAt),
+    status: data.status || "",
+    relatedBookingId: data.relatedBookingId || "",
+    relatedBookingTitle: data.relatedBookingTitle || "",
+    relatedRoomId: data.relatedRoomId || "",
+    relatedRoomName: data.relatedRoomName || "",
+    errorCode: data.errorCode || "",
+    errorMessage: data.errorMessage || "",
+    createdAt: serializeDate(data.createdAt),
+  };
+}
+
 function assertString(value, name) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new HttpsError("invalid-argument", `${name} is required.`);
@@ -254,6 +318,43 @@ function normalizeId(value) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function getAuthEmail(request) {
+  return request &&
+    request.auth &&
+    request.auth.token &&
+    typeof request.auth.token.email === "string"
+    ? request.auth.token.email
+    : "";
+}
+
+async function isFirebaseAdminAuth(request) {
+  if (!request || !request.auth) return false;
+
+  const email = getAuthEmail(request);
+  if (email === "phooriwat456@gmail.com") return true;
+
+  const candidateIds = [
+    normalizeId(request.auth.uid),
+    normalizeId(email),
+  ].filter(Boolean);
+
+  for (const candidateId of [...new Set(candidateIds)]) {
+    const snap = await db.collection("admins").doc(candidateId).get();
+    if (snap.exists) return true;
+  }
+
+  if (email) {
+    const querySnap = await db
+      .collection("admins")
+      .where("username", "==", email)
+      .limit(1)
+      .get();
+    if (!querySnap.empty) return true;
+  }
+
+  return false;
+}
+
 function isMatchingSuperAdmin(data, credentials) {
   return (
     data &&
@@ -265,9 +366,33 @@ function isMatchingSuperAdmin(data, credentials) {
   );
 }
 
+function isMatchingAdmin(data, credentials) {
+  return (
+    data &&
+    (data.role === "SUPER_ADMIN" || data.role === "APPROVER") &&
+    typeof data.password === "string" &&
+    data.password === credentials.password &&
+    typeof data.username === "string" &&
+    data.username === credentials.username
+  );
+}
+
 function findBootstrapSuperAdmin(credentials) {
   return BOOTSTRAP_SUPER_ADMINS.find((user) => (
     user.role === "SUPER_ADMIN" &&
+    user.username === credentials.username &&
+    user.password === credentials.password &&
+    (
+      credentials.id === user.id ||
+      credentials.firestoreDocId === user.id ||
+      credentials.username === user.username
+    )
+  )) || null;
+}
+
+function findBootstrapAdmin(credentials) {
+  return BOOTSTRAP_ADMINS.find((user) => (
+    (user.role === "SUPER_ADMIN" || user.role === "APPROVER") &&
     user.username === credentials.username &&
     user.password === credentials.password &&
     (
@@ -311,6 +436,67 @@ async function findSuperAdmin(credentials) {
   }
 
   return null;
+}
+
+async function findAdmin(credentials) {
+  const bootstrapUser = findBootstrapAdmin(credentials);
+  if (bootstrapUser) {
+    return { docId: bootstrapUser.id, data: bootstrapUser, source: "bootstrap" };
+  }
+
+  const candidateIds = [
+    normalizeId(credentials.firestoreDocId),
+    normalizeId(credentials.id),
+    normalizeId(credentials.username),
+  ].filter(Boolean);
+
+  for (const candidateId of [...new Set(candidateIds)]) {
+    const snap = await db.collection("admins").doc(candidateId).get();
+    if (snap.exists && isMatchingAdmin(snap.data(), credentials)) {
+      return { docId: snap.id, data: snap.data(), source: "firestore" };
+    }
+  }
+
+  const querySnap = await db
+    .collection("admins")
+    .where("username", "==", credentials.username)
+    .limit(1)
+    .get();
+
+  if (!querySnap.empty) {
+    const snap = querySnap.docs[0];
+    if (isMatchingAdmin(snap.data(), credentials)) {
+      return { docId: snap.id, data: snap.data(), source: "firestore" };
+    }
+  }
+
+  return null;
+}
+
+async function assertAdminAccess(request, data) {
+  if (await isFirebaseAdminAuth(request)) {
+    return { source: "firebase-auth" };
+  }
+
+  const adminUser = data.admin || {};
+  const credentials = {
+    id: normalizeId(adminUser.id),
+    firestoreDocId: normalizeId(adminUser.firestoreDocId),
+    username: assertString(adminUser.username, "admin.username"),
+    password: assertString(adminUser.password, "admin.password"),
+    role: assertString(adminUser.role, "admin.role"),
+  };
+
+  if (credentials.role !== "SUPER_ADMIN" && credentials.role !== "APPROVER") {
+    throw new HttpsError("permission-denied", "Only Admin users can access email history.");
+  }
+
+  const verifiedAdmin = await findAdmin(credentials);
+  if (!verifiedAdmin) {
+    throw new HttpsError("permission-denied", "Admin credentials could not be verified.");
+  }
+
+  return verifiedAdmin;
 }
 
 exports.deleteAdminAccount = onCall(APP_HTTPS_OPTIONS, async (request) => {
@@ -423,21 +609,46 @@ exports.sendBookingVerificationEmail = onCall(APP_HTTPS_OPTIONS, async (request)
     });
 
     const emailPayload = buildVerificationEmailPayload(email, bookingId, verifyUrl, booking);
+    const roomName = await getRoomName(booking.roomId);
+    const historyBase = {
+      recipientEmail: email,
+      recipientName: booking.organizer || "",
+      subject: emailPayload.subject,
+      purpose: "Booking Verification",
+      relatedBookingId: bookingId,
+      relatedBookingTitle: booking.title || "",
+      relatedRoomId: booking.roomId || "",
+      relatedRoomName: roomName,
+    };
 
     try {
       await sendPowerAutomateEmail(emailPayload);
     } catch (error) {
-      await bookingRef.update({
-        verificationEmailStatus: "failed",
-        verificationEmailFailedAt: FieldValue.serverTimestamp(),
-      });
+      await Promise.all([
+        bookingRef.update({
+          verificationEmailStatus: "failed",
+          verificationEmailFailedAt: FieldValue.serverTimestamp(),
+        }),
+        recordEmailSentHistory({
+          ...historyBase,
+          status: "failed",
+          errorCode: error && error.code ? String(error.code) : "",
+          errorMessage: error && error.message ? String(error.message) : String(error),
+        }),
+      ]);
       throw error;
     }
 
-    await bookingRef.update({
-      verificationEmailStatus: "sent",
-      verificationEmailSentAt: FieldValue.serverTimestamp(),
-    });
+    await Promise.all([
+      bookingRef.update({
+        verificationEmailStatus: "sent",
+        verificationEmailSentAt: FieldValue.serverTimestamp(),
+      }),
+      recordEmailSentHistory({
+        ...historyBase,
+        status: "successful",
+      }),
+    ]);
 
     return {
       success: true,
@@ -459,6 +670,41 @@ exports.sendBookingVerificationEmail = onCall(APP_HTTPS_OPTIONS, async (request)
     throw new HttpsError(
       "internal",
       `Verification email failed: ${error && error.message ? error.message : String(error)}`
+    );
+  }
+});
+
+exports.listEmailSentHistory = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+
+    const limit = Number.isInteger(data.limit) && data.limit > 0 && data.limit <= 500
+      ? data.limit
+      : 200;
+    const snap = await db
+      .collection("emailSentHistory")
+      .orderBy("sentAt", "desc")
+      .limit(limit)
+      .get();
+
+    return {
+      history: snap.docs.map(serializeEmailHistoryRecord),
+    };
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      throw error;
+    }
+
+    console.error("listEmailSentHistory failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `Email history load failed: ${error && error.message ? error.message : String(error)}`
     );
   }
 });

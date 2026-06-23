@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole } from '../types';
+import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, ChevronLeft, ChevronRight, BarChart2 } from 'lucide-react';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, ChevronLeft, ChevronRight, BarChart2, Mail, RefreshCw } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
 import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions, handleFirestoreError, OperationType } from '../firebase';
 
 export const CLOSURE_REASONS = [
   { key: 'Renovation', labelEn: 'Renovation', labelTh: 'ปิดปรับปรุงชั่วคราว' },
@@ -65,10 +66,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
+  const [loginErrorKey, setLoginErrorKey] = useState<'' | 'invalidUserPass' | 'googleAuthFailed'>('');
 
   // Data State with Firebase Persistence
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [emailHistory, setEmailHistory] = useState<EmailSentHistoryRecord[]>([]);
+  const [isEmailHistoryLoading, setIsEmailHistoryLoading] = useState(false);
+  const [emailHistoryError, setEmailHistoryError] = useState('');
 
   // Real-time admins listener and seeding on Firestore
   useEffect(() => {
@@ -98,7 +102,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   }, []);
   
   // UI State
-  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics'>('bookings');
+  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('bookings');
   
   const sortedRooms = useMemo(() => {
     const order: Record<string, number> = {
@@ -155,15 +159,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     employeeId: '',
     phone: ''
   });
-  const passwordErrorMessage = language === 'th'
-    ? 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร และมีตัวพิมพ์เล็ก ตัวพิมพ์ใหญ่ และตัวเลขอย่างน้อยอย่างละ 1 ตัว'
-    : 'Password must be at least 8 characters and include at least 1 lowercase letter, 1 uppercase letter, and 1 number';
+  const passwordErrorMessage = t.adminPasswordRequirement;
+  const loginErrorMessage = loginErrorKey ? t[loginErrorKey] : '';
   const validatePassword = (password: string) => (
     password.length >= 8 &&
     /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
     /\d/.test(password)
   );
+
+  useEffect(() => {
+    setNewUserFormErrors(prev => ({
+      password: prev.password ? t.adminPasswordRequirement : '',
+      employeeId: prev.employeeId ? t.employeeIdSevenDigits : '',
+      phone: prev.phone ? t.deskPhoneFourDigits : ''
+    }));
+  }, [language, t.adminPasswordRequirement, t.employeeIdSevenDigits, t.deskPhoneFourDigits]);
 
   // Room Form State
   const [roomForm, setRoomForm] = useState<Partial<Room>>({
@@ -188,12 +199,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         console.warn("Background Firebase Auth login failed (working offline?):", authErr);
       }
       updateCurrentUser(user);
-      setLoginError('');
+      setLoginErrorKey('');
       if (user.role === 'APPROVER') {
           setActiveTab('bookings');
       }
     } else {
-      setLoginError(t.invalidUserPass);
+      setLoginErrorKey('invalidUserPass');
     }
   };
 
@@ -213,18 +224,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           password: '',
           role
         });
-        setLoginError('');
+        setLoginErrorKey('');
       }
     } catch (e) {
       console.error("Google Authentication Failure", e);
-      setLoginError(language === 'th' ? "การเข้าสู่ระบบด้วย Google ผิดพลาด" : "Google Authentication failed");
+      setLoginErrorKey('googleAuthFailed');
     }
   };
 
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
       if (currentUser?.role !== 'SUPER_ADMIN') {
-          showNotification(language === 'th' ? "เฉพาะผู้ดูแลหลักระบบเท่านั้นที่สามารถสร้างผู้ดูแลระบบคนอื่นได้" : "Only Super Admins can create new admins", 'error');
+          showNotification(t.onlySuperAdminsCanCreate, 'error');
           return;
       }
 
@@ -234,14 +245,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const passwordError = validatePassword(password) ? '' : passwordErrorMessage;
       const employeeIdError = /^\d{7}$/.test(employeeId)
         ? ''
-        : language === 'th'
-          ? 'รหัสพนักงานต้องเป็นตัวเลข 7 หลัก'
-          : 'Employee ID must be exactly 7 digits';
+        : t.employeeIdSevenDigits;
       const phoneError = /^\d{4}$/.test(phone)
         ? ''
-        : language === 'th'
-          ? 'เบอร์โต๊ะต้องเป็นตัวเลข 4 หลัก'
-          : 'Desk Phone must be exactly 4 digits';
+        : t.deskPhoneFourDigits;
 
       if (passwordError || employeeIdError || phoneError) {
           setNewUserFormErrors({ password: passwordError, employeeId: employeeIdError, phone: phoneError });
@@ -271,7 +278,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         setIsUserModalOpen(false);
         setNewUserForm({ username: '', password: '', employeeId: '', phone: '', department: 'HR', role: 'APPROVER' });
         setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-        showNotification(language === 'th' ? "เพิ่มแอดมินสำเร็จ!" : "Admin created successfully!", 'success');
+        showNotification(t.adminCreatedSuccess, 'success');
       } catch (e) {
         handleFirestoreError(e, OperationType.CREATE, `admins/${newUserId}`);
       }
@@ -281,11 +288,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       if (id === currentUser?.id) {
           setConfirmModal({
             isOpen: true,
-            title: language === 'th' ? "ไม่สามารถดำเนินการได้" : "Action Restricted",
+            title: t.actionRestricted,
             message: t.cannotDeleteSelf,
             isDanger: false,
-            confirmText: language === 'th' ? 'รับทราบ' : 'OK',
-            cancelText: language === 'th' ? 'ปิด' : 'Close',
+            confirmText: t.ok,
+            cancelText: t.close,
             onConfirm: () => {
               setConfirmModal(prev => ({ ...prev, isOpen: false }));
             }
@@ -294,11 +301,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       setConfirmModal({
         isOpen: true,
-        title: language === 'th' ? 'ยืนยันการลบแอดมิน' : 'Confirm Delete Admin',
+        title: t.deleteAdminTitle,
         message: t.confirmDeleteUser,
         isDanger: true,
-        confirmText: language === 'th' ? 'ลบออก' : 'Delete',
-        cancelText: language === 'th' ? 'ยกเลิก' : 'Cancel',
+        confirmText: t.deleteButton,
+        cancelText: t.cancel,
         onConfirm: async () => {
           try {
             await deleteDoc(doc(db, 'admins', id));
@@ -311,7 +318,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const getRoomName = (roomId: string) => {
-    return rooms.find(r => r.id === roomId)?.name || 'Unknown Room';
+    return rooms.find(r => r.id === roomId)?.name || t.unknownRoom;
   };
 
   const openAddRoomModal = () => {
@@ -444,7 +451,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           imageUrl: finalImageUrl, 
           amenities 
         } as Room);
-        showNotification(language === 'th' ? "บันทึกและแก้ไขข้อมูลห้องประชุมสำเร็จ!" : "Room updated successfully!", 'success');
+        showNotification(t.roomUpdatedSuccess, 'success');
       } else {
         const randomId = Math.random().toString(36).substr(2, 9);
         await onAddRoom({
@@ -454,7 +461,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           imageUrl: finalImageUrl,
           amenities
         } as Room);
-        showNotification(language === 'th' ? "เพิ่มห้องประชุมสำเร็จ!" : "Room created successfully!", 'success');
+        showNotification(t.roomCreatedSuccess, 'success');
       }
       setIsRoomModalOpen(false);
     } catch (err: any) {
@@ -468,9 +475,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         }
       } catch (ex) {}
 
-      showNotification(language === 'th'
-        ? `เกิดข้อผิดพลาดในการบันทึกห้องประชุม: ${errorDesc || 'ไม่มีสิทธิ์ในการบันทึกหรือขนาดไฟล์รูปภาพใหญ่เกินไป'}`
-        : `Failed to save room: ${errorDesc || 'Permission Denied or image file too large'}`, 'error');
+      showNotification(t.roomSaveFailed.replace('{reason}', errorDesc || t.roomSaveFallbackReason), 'error');
     }
   };
 
@@ -509,7 +514,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     });
 
     const busiestRoomObj = [...roomStats].sort((a, b) => b.hoursBooked - a.hoursBooked)[0];
-    const busiestRoom = busiestRoomObj && busiestRoomObj.hoursBooked > 0 ? busiestRoomObj.room.name : (language === 'th' ? 'ยังไม่มีการประชุม' : 'No bookings');
+    const busiestRoom = busiestRoomObj && busiestRoomObj.hoursBooked > 0 ? busiestRoomObj.room.name : t.noBookings;
 
     // Department breakdown
     const departmentCounts: Record<string, number> = {};
@@ -583,6 +588,106 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return type;
   };
 
+  const parseHistoryDate = (value: any): Date => {
+    if (!value) return new Date(0);
+    if (value instanceof Date) return value;
+    if (typeof value.toDate === 'function') return value.toDate();
+    if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+  };
+
+  const formatEmailSentAt = (value: Date): string => {
+    if (!value || value.getTime() === 0 || Number.isNaN(value.getTime())) return '-';
+    const locale = language === 'th' ? 'th-TH' : 'en-US';
+    const time = value.toLocaleTimeString(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: language === 'en',
+    });
+    return `${formatDate(value, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} ${time}`;
+  };
+
+  const normalizeEmailHistoryRecord = (raw: any): EmailSentHistoryRecord => ({
+    id: String(raw?.id || Math.random().toString(36).slice(2)),
+    recipientEmail: String(raw?.recipientEmail || ''),
+    recipientName: String(raw?.recipientName || ''),
+    subject: String(raw?.subject || ''),
+    purpose: String(raw?.purpose || ''),
+    sentAt: parseHistoryDate(raw?.sentAt || raw?.createdAt),
+    status: raw?.status === 'failed' ? 'failed' : 'successful',
+    relatedBookingId: String(raw?.relatedBookingId || ''),
+    relatedBookingTitle: String(raw?.relatedBookingTitle || ''),
+    relatedRoomId: String(raw?.relatedRoomId || ''),
+    relatedRoomName: String(raw?.relatedRoomName || ''),
+    errorCode: String(raw?.errorCode || ''),
+    errorMessage: String(raw?.errorMessage || ''),
+    createdAt: raw?.createdAt,
+  });
+
+  const loadEmailHistory = async () => {
+    if (!currentUser) return;
+
+    setIsEmailHistoryLoading(true);
+    setEmailHistoryError('');
+    try {
+      const listHistory = httpsCallable(functions, 'listEmailSentHistory');
+      const response = await listHistory({
+        limit: 200,
+        admin: {
+          id: currentUser.id,
+          firestoreDocId: currentUser.id,
+          username: currentUser.username,
+          password: currentUser.password || '',
+          role: currentUser.role,
+        },
+      });
+      const data = response.data as { history?: unknown[] };
+      const records = Array.isArray(data.history)
+        ? data.history.map(normalizeEmailHistoryRecord)
+        : [];
+      records.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+      setEmailHistory(records);
+    } catch (error) {
+      console.error('Failed to load email sent history', error);
+      setEmailHistoryError(t.emailHistoryLoadFailed);
+    } finally {
+      setIsEmailHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && activeTab === 'emails') {
+      void loadEmailHistory();
+    }
+  }, [activeTab, currentUser?.id, currentUser?.username, language]);
+
+  const renderLanguageSwitcher = (className = '') => {
+    const updateLanguage = setLanguage;
+    if (!updateLanguage) return null;
+
+    return (
+      <div className={`flex bg-slate-100 p-1 rounded-lg border border-slate-200 shadow-sm ${className}`}>
+        <button
+          type="button"
+          onClick={() => updateLanguage('en')}
+          aria-pressed={language === 'en'}
+          className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'en' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+        >
+          English
+        </button>
+        <button
+          type="button"
+          onClick={() => updateLanguage('th')}
+          aria-pressed={language === 'th'}
+          className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'th' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+        >
+          ภาษาไทย
+        </button>
+      </div>
+    );
+  };
+
   if (!currentUser) {
     return (
       <div className="flex items-center justify-center h-[calc(100vh-200px)] animate-in fade-in zoom-in duration-300">
@@ -621,7 +726,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
             </div>
-            {loginError && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg font-medium">{loginError}</p>}
+            {loginErrorMessage && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg font-medium">{loginErrorMessage}</p>}
             <button
               type="submit"
               className="w-full bg-brand-500 text-white py-2.5 rounded-xl font-bold hover:bg-brand-600 transition-colors shadow-sm hover:shadow flex items-center justify-center"
@@ -633,7 +738,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <div className="relative my-4 flex py-1 items-center">
               <div className="flex-grow border-t border-slate-200"></div>
               <span className="flex-shrink mx-3 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-                {language === 'th' ? 'หรือเชื่อมต่อด้วย' : 'or continue with'}
+                {t.orContinueWith}
               </span>
               <div className="flex-grow border-t border-slate-200"></div>
             </div>
@@ -649,7 +754,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.22-.67-.35-1.37-.35-2.09z" fill="#FBBC05"/>
                 <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
               </svg>
-              <span>{language === 'th' ? 'เข้าสู่ระบบด้วย Google' : 'Sign In with Google'}</span>
+              <span>{t.signInWithGoogle}</span>
             </button>
           </form>
         </div>
@@ -659,13 +764,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-      <header className="flex flex-col md:flex-row md:items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t.welcomeBack}</h1>
-          <p className="text-slate-500 font-medium">Username: <span className="font-semibold text-brand-500">{currentUser.username}</span>.</p>
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="w-full sm:w-56">
+          {renderLanguageSwitcher()}
         </div>
-        <div className="mt-4 md:mt-0 flex items-center space-x-3">
-            <div className={`flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${currentUser.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700' : 'bg-teal-100 text-teal-700'}`}>
+        <div className="flex flex-wrap items-center justify-start sm:justify-end gap-3">
+            <div className="flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-white border border-slate-200 text-slate-700 shadow-sm">
+                <User className="w-4 h-4 mr-2 text-brand-500" />
+                {currentUser.username}
+            </div>
+            <div className={`flex items-center px-3 py-1.5 rounded-full text-sm font-semibold shadow-sm ${currentUser.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700 border border-brand-200' : 'bg-teal-100 text-teal-700 border border-teal-200'}`}>
                 {currentUser.role === 'SUPER_ADMIN' ? <ShieldCheck className="w-4 h-4 mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
                 {currentUser.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
             </div>
@@ -674,6 +782,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     updateCurrentUser(null);
                     setLoginUsername('');
                     setLoginPassword('');
+                    setLoginErrorKey('');
+                    onBackToUser?.();
                 }}
                 className="text-sm text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors font-semibold"
             >
@@ -698,6 +808,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         >
             <BarChart2 className="w-4 h-4 mr-2" />
             {t.insightsStats}
+        </button>
+
+        <button
+            onClick={() => setActiveTab('emails')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'emails' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+            <Mail className="w-4 h-4 mr-2" />
+            {t.emailHistoryTab}
         </button>
         
         {/* Room management is accessible to all admins */}
@@ -821,7 +939,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     {booking.deskNumber && (
                                         <div className="flex items-center text-xs text-slate-400">
                                             <span className="font-bold text-[10px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded mr-1.5 shrink-0">
-                                                {language === 'th' ? 'โต๊ะ' : 'Desk'}
+                                                {t.deskShort}
                                             </span>
                                             {booking.deskNumber}
                                         </div>
@@ -841,12 +959,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 )}
                                 {booking.status === BookingStatus.VERIFIED && (
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                                        {language === 'th' ? 'ยืนยันแล้ว' : 'Verified'}
+                                        {t.verified}
                                     </span>
                                 )}
                                 {(booking.status === BookingStatus.REJECTED || !booking.status) && booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.VERIFIED && (
                                     <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                                        {language === 'th' ? "ปฏิเสธ" : "Rejected"}
+                                        {t.rejected}
                                     </span>
                                 )}
                             </td>
@@ -857,14 +975,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <button
                                                 onClick={() => onApproveBooking(booking.id)}
                                                 className="text-white bg-green-500 hover:bg-green-600 p-1.5 rounded-lg transition-all shadow-sm"
-                                                title="Approve"
+                                                title={t.approve}
                                             >
                                                 <Check className="w-4 h-4" />
                                             </button>
                                             <button
                                                 onClick={() => onRejectBooking(booking.id)}
                                                 className="text-white bg-orange-500 hover:bg-orange-600 p-1.5 rounded-lg transition-all shadow-sm"
-                                                title="Reject"
+                                                title={t.reject}
                                             >
                                                 <XCircle className="w-4 h-4" />
                                             </button>
@@ -874,7 +992,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <button
                                         onClick={() => onDeleteBooking(booking.id)}
                                         className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                        title="Delete"
+                                        title={t.deleteButton}
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
@@ -898,7 +1016,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <button 
                     onClick={() => navigateAnalyticsDate(-1)}
                     className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600"
-                    title={language === 'th' ? "วันก่อนหน้า" : "Previous day"}
+                    title={t.previousDay}
                  >
                     <ChevronLeft className="w-5 h-5" />
                  </button>
@@ -908,14 +1026,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <button 
                     onClick={() => navigateAnalyticsDate(1)}
                     className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600"
-                    title={language === 'th' ? "วันถัดไป" : "Next day"}
+                    title={t.nextDay}
                  >
                     <ChevronRight className="w-5 h-5" />
                  </button>
               </div>
               
               <div className="text-xs text-slate-500 font-bold">
-                 {t.insightsStats} - {language === 'th' ? "โหมดผู้ดูแลระบบ" : "Admin Mode"}
+                 {t.insightsStats} - {t.adminModeLabel}
               </div>
            </div>
 
@@ -950,7 +1068,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.peakActiveTime}</div>
                     <div className="text-2xl font-bold text-slate-800">
-                       {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : (language === 'th' ? 'ไม่มี' : 'None')}
+                       {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : t.none}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.peakCount > 0 ? `${analyticsData.peakCount} ${t.overlappingBookings}` : t.noOverlappingBookings}</div>
                  </div>
@@ -963,7 +1081,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
                     <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
-                       {analyticsData.departmentData[0] ? analyticsData.departmentData[0].name : (language === 'th' ? 'ไม่มี' : 'None')}
+                       {analyticsData.departmentData[0] ? analyticsData.departmentData[0].name : t.none}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
                  </div>
@@ -985,7 +1103,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                        <div key={item.room.id} className="space-y-1.5">
                           <div className="flex justify-between items-center text-xs font-bold text-slate-705">
                              <span>{item.room.name} ({getRoomTypeLabel(item.room.type)})</span>
-                             <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {language === 'th' ? "ชม." : "hrs"})</span>
+                             <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {t.hoursShort})</span>
                           </div>
                           <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
                              <div 
@@ -1024,7 +1142,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                       <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
                                       {translateText(dept.name, language)}
                                    </span>
-                                   <span className="font-bold text-slate-800">{dept.count} {language === 'th' ? "ครั้ง" : "Bookings"} ({dept.pct}%)</span>
+                                   <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.pct}%)</span>
                                 </div>
                                 <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                                    <div 
@@ -1047,6 +1165,122 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  </div>
               </div>
            </div>
+        </div>
+      )}
+
+      {activeTab === 'emails' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800 animate-in fade-in zoom-in-95 duration-200">
+          <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-800 flex items-center">
+                <Mail className="w-4 h-4 mr-2 text-brand-500" />
+                {t.emailHistoryTitle}
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-1">{t.emailHistorySub}</p>
+            </div>
+            <button
+              type="button"
+              onClick={loadEmailHistory}
+              disabled={isEmailHistoryLoading}
+              className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-wait"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isEmailHistoryLoading ? 'animate-spin' : ''}`} />
+              {t.refreshEmailHistory}
+            </button>
+          </div>
+
+          {emailHistoryError && (
+            <div className="m-4 p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm font-semibold text-rose-700 flex items-center">
+              <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+              {emailHistoryError}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">{t.recipientCol}</th>
+                  <th className="px-6 py-3">{t.subjectPurposeCol}</th>
+                  <th className="px-6 py-3">{t.relatedCol}</th>
+                  <th className="px-6 py-3">{t.sentAtCol}</th>
+                  <th className="px-6 py-3">{t.sentStatusCol}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {isEmailHistoryLoading && emailHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                      {t.loadingEmailHistory}...
+                    </td>
+                  </tr>
+                ) : emailHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">
+                      {t.noEmailHistory}
+                    </td>
+                  </tr>
+                ) : (
+                  emailHistory.map((record) => {
+                    const relatedBooking = record.relatedBookingTitle || record.relatedBookingId;
+                    const relatedRoom = record.relatedRoomName || (record.relatedRoomId ? getRoomName(record.relatedRoomId) : '');
+                    const purpose = record.purpose === 'Booking Verification'
+                      ? t.bookingVerificationPurpose
+                      : translateText(record.purpose, language);
+                    return (
+                      <tr key={record.id} className="hover:bg-slate-50 transition-colors align-top">
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-900">{record.recipientName || '-'}</div>
+                          <div className="text-xs text-slate-500 font-mono mt-0.5">{record.recipientEmail || '-'}</div>
+                        </td>
+                        <td className="px-6 py-4 max-w-sm">
+                          <div className="font-semibold text-slate-800 truncate" title={record.subject}>
+                            {record.subject || '-'}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">{purpose || '-'}</div>
+                          {record.status === 'failed' && (record.errorMessage || record.errorCode) && (
+                            <div className="mt-2 text-[11px] font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-md px-2 py-1">
+                              {t.errorLabel}: {record.errorCode ? `${record.errorCode} - ` : ''}{record.errorMessage}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {relatedBooking || relatedRoom ? (
+                            <div className="space-y-1">
+                              {relatedBooking && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="font-bold text-slate-500">{t.bookingLabel}:</span> {translateText(relatedBooking, language)}
+                                </div>
+                              )}
+                              {relatedRoom && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="font-bold text-slate-500">{t.roomLabel}:</span> {relatedRoom}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs italic text-slate-400">{t.noRelatedItem}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-semibold">
+                          {formatEmailSentAt(record.sentAt)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            record.status === 'successful'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-rose-100 text-rose-700'
+                          }`}>
+                            {record.status === 'successful' ? t.emailStatusSuccessful : t.emailStatusFailed}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1117,14 +1351,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <button
                                                 onClick={() => openEditRoomModal(room)}
                                                 className="text-slate-400 hover:text-brand-500 hover:bg-brand-50 p-2 rounded-lg transition-all"
-                                                title="Edit"
+                                                title={t.edit}
                                             >
                                                 <Edit className="w-4 h-4" />
                                             </button>
                                             <button
                                                 onClick={() => onDeleteRoom(room.id)}
                                                 className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                                title="Delete"
+                                                title={t.deleteButton}
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -1172,7 +1406,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <User className="w-4 h-4 text-slate-500" />
                                         </div>
                                         {user.username}
-                                        {user.id === currentUser.id && <span className="ml-2 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">(You)</span>}
+                                        {user.id === currentUser.id && <span className="ml-2 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">{t.currentUserBadge}</span>}
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${user.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700' : 'bg-teal-100 text-teal-700'}`}>
@@ -1187,7 +1421,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <button
                                                 onClick={() => handleDeleteUser(user.id)}
                                                 className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                                title="Delete"
+                                                title={t.deleteButton}
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -1223,7 +1457,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             value={roomForm.name}
                             onChange={(e) => setRoomForm({...roomForm, name: e.target.value})}
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                            placeholder="e.g. Conference Room A"
+                            placeholder={t.roomNamePlaceholder}
                         />
                     </div>
                     
@@ -1303,14 +1537,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                           const val = e.target.value;
                                           if (val === 'Other') {
                                             // Set a dynamic placeholder reason for User to start editing
-                                            setRoomForm({ ...roomForm, closureReason: language === 'th' ? 'ปรับปรุงห้อง' : 'Custom Renovation' });
+                                            setRoomForm({ ...roomForm, closureReason: t.customRenovationReason });
                                           } else {
                                             setRoomForm({ ...roomForm, closureReason: val });
                                           }
                                         }}
                                         className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
                                     >
-                                        <option value="">{language === 'th' ? '-- เลือกสาเหตุการปิดห้อง --' : '-- Select Closure Reason --'}</option>
+                                        <option value="">{t.closureReasonSelectPlaceholder}</option>
                                         {CLOSURE_REASONS.map(r => (
                                           <option key={r.key} value={r.key}>
                                             {language === 'th' ? r.labelTh : r.labelEn}
@@ -1327,7 +1561,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 value={roomForm.closureReason === 'Custom Renovation' || roomForm.closureReason === 'ปรับปรุงห้อง' ? '' : roomForm.closureReason || ''}
                                                 onChange={(e) => setRoomForm({...roomForm, closureReason: e.target.value})}
                                                 className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                                placeholder={language === 'th' ? 'กรุณาระบุกิจกรรม/สาเหตุของท่าน...' : 'Please specify-your custom reason...'}
+                                                placeholder={t.customClosureReasonPlaceholder}
                                             />
                                         </div>
                                     )}
@@ -1434,7 +1668,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 value={newUserForm.username}
                                 onChange={(e) => setNewUserForm({...newUserForm, username: e.target.value})}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                                placeholder="Username / Email"
+                                placeholder={t.usernameEmailPlaceholder}
                             />
                         </div>
                         <div>
@@ -1460,7 +1694,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ? 'border-rose-300 focus:ring-rose-500'
                                         : 'border-slate-300 focus:ring-brand-500'
                                 }`}
-                                placeholder="Password"
+                                placeholder={t.passwordPlaceholder}
                             />
                             {newUserFormErrors.password && (
                                 <p id="new-admin-password-error" className="mt-1 text-xs font-semibold text-rose-600">
@@ -1473,7 +1707,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {language === 'th' ? 'รหัสประจำตัวพนักงาน' : 'Employee ID'} <span className="text-rose-500">*</span>
+                                {t.employeeId} <span className="text-rose-500">*</span>
                             </label>
                             <input
                                 required
@@ -1497,7 +1731,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ? 'border-rose-300 focus:ring-rose-500'
                                         : 'border-slate-300 focus:ring-brand-500'
                                 }`}
-                                placeholder="e.g. 1234567"
+                                placeholder={t.employeeIdPlaceholder}
                             />
                             {newUserFormErrors.employeeId && (
                                 <p id="new-admin-employee-id-error" className="mt-1 text-xs font-semibold text-rose-600">
@@ -1507,7 +1741,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {language === 'th' ? 'เบอร์โต๊ะ/เบอร์โทรศัพท์' : 'Desk Phone'} <span className="text-rose-500">*</span>
+                                {t.deskPhone} <span className="text-rose-500">*</span>
                             </label>
                             <input
                                 required
@@ -1531,7 +1765,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ? 'border-rose-300 focus:ring-rose-500'
                                         : 'border-slate-300 focus:ring-brand-500'
                                 }`}
-                                placeholder="e.g. 5678"
+                                placeholder={t.deskPhonePlaceholder}
                             />
                             {newUserFormErrors.phone && (
                                 <p id="new-admin-phone-error" className="mt-1 text-xs font-semibold text-rose-600">
