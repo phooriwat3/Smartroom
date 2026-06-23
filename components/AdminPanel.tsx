@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
-import { INITIAL_ADMIN_USERS, DEPARTMENTS } from '../constants';
+import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, ChevronLeft, ChevronRight, BarChart2, Mail, RefreshCw } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
@@ -36,6 +36,9 @@ interface AdminPanelProps {
   currentUser?: AdminUser | null;
   setCurrentUser?: (user: AdminUser | null) => void;
   onBackToUser?: () => void;
+  loginPresentation?: 'page' | 'modal';
+  onCancelLogin?: () => void;
+  onLoginSuccess?: () => void;
 }
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
@@ -53,7 +56,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   showNotification,
   currentUser: controlledCurrentUser,
   setCurrentUser: setControlledCurrentUser,
-  onBackToUser
+  onBackToUser,
+  loginPresentation = 'page',
+  onCancelLogin,
+  onLoginSuccess
 }) => {
   const t = TRANSLATIONS[language];
 
@@ -168,6 +174,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     /\d/.test(password)
   );
 
+  const completeLogin = (user: AdminUser) => {
+    updateCurrentUser(user);
+    setLoginErrorKey('');
+    if (user.role === 'APPROVER') {
+      setActiveTab('bookings');
+    }
+    onLoginSuccess?.();
+  };
+
   useEffect(() => {
     setNewUserFormErrors(prev => ({
       password: prev.password ? t.adminPasswordRequirement : '',
@@ -198,11 +213,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       } catch (authErr) {
         console.warn("Background Firebase Auth login failed (working offline?):", authErr);
       }
-      updateCurrentUser(user);
-      setLoginErrorKey('');
-      if (user.role === 'APPROVER') {
-          setActiveTab('bookings');
-      }
+      completeLogin(user);
     } else {
       setLoginErrorKey('invalidUserPass');
     }
@@ -217,14 +228,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         const isSuperMail = user.email === "phooriwat456@gmail.com";
         const adminDoc = adminUsers.find(u => u.username === user.email || u.id === user.uid);
         const role: AdminRole = isSuperMail ? 'SUPER_ADMIN' : (adminDoc ? adminDoc.role : 'APPROVER');
-        
-        updateCurrentUser({
+
+        completeLogin({
           id: user.uid,
           username: user.email || user.displayName || 'Google Admin',
           password: '',
           role
         });
-        setLoginErrorKey('');
       }
     } catch (e) {
       console.error("Google Authentication Failure", e);
@@ -333,8 +343,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       closureReason: '',
       closureStartDate: '',
       closureEndDate: '',
-      closureStartTime: 7,
-      closureEndTime: 24
+      closureStartTime: BOOKING_START_HOUR,
+      closureEndTime: 12
     });
     setAmenitiesString('');
     setIsRoomModalOpen(true);
@@ -342,14 +352,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const openEditRoomModal = (room: Room) => {
     setEditingRoom(room);
+    const closureStartTime = room.closureStartTime !== undefined ? room.closureStartTime : BOOKING_START_HOUR;
+    const rawClosureEndTime = room.closureEndTime !== undefined ? room.closureEndTime : 12;
+    const closureEndTime = rawClosureEndTime > closureStartTime && rawClosureEndTime <= BOOKING_END_HOUR
+      ? rawClosureEndTime
+      : Math.min(Math.max(closureStartTime + 1, 12), BOOKING_END_HOUR);
     setRoomForm({ 
       ...room,
       isClosed: room.isClosed || false,
       closureReason: room.closureReason || '',
       closureStartDate: room.closureStartDate || '',
-      closureEndDate: room.closureEndDate || '',
-      closureStartTime: room.closureStartTime !== undefined ? room.closureStartTime : 7,
-      closureEndTime: room.closureEndTime !== undefined ? room.closureEndTime : 24
+      closureEndDate: room.closureStartDate || room.closureEndDate || '',
+      closureStartTime,
+      closureEndTime
     });
     setAmenitiesString(room.amenities.join(', '));
     setIsRoomModalOpen(true);
@@ -424,21 +439,42 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const amenities = amenitiesString.split(',').map(s => s.trim()).filter(s => s !== '');
     
     const { id: _, ...restRoomForm } = roomForm;
+    const closureDate = (roomForm.closureStartDate || '').trim();
+    const closureStartTime = roomForm.closureStartTime !== undefined ? Number(roomForm.closureStartTime) : BOOKING_START_HOUR;
+    const closureEndTime = roomForm.closureEndTime !== undefined ? Number(roomForm.closureEndTime) : 12;
+
+    if (roomForm.isClosed) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(closureDate)) {
+        showNotification(t.closureDateRequired, 'error');
+        return;
+      }
+
+      if (
+        !Number.isInteger(closureStartTime) ||
+        !Number.isInteger(closureEndTime) ||
+        closureStartTime < BOOKING_START_HOUR ||
+        closureEndTime > BOOKING_END_HOUR ||
+        closureEndTime <= closureStartTime
+      ) {
+        showNotification(t.closureTimeInvalid, 'error');
+        return;
+      }
+    }
 
     const closureData = roomForm.isClosed ? {
       isClosed: true,
       closureReason: roomForm.closureReason || '',
-      closureStartDate: roomForm.closureStartDate || '',
-      closureEndDate: roomForm.closureEndDate || '',
-      closureStartTime: roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : 7,
-      closureEndTime: roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 24
+      closureStartDate: closureDate,
+      closureEndDate: closureDate,
+      closureStartTime,
+      closureEndTime
     } : {
       isClosed: false,
       closureReason: '',
       closureStartDate: '',
       closureEndDate: '',
-      closureStartTime: 7,
-      closureEndTime: 24
+      closureStartTime: BOOKING_START_HOUR,
+      closureEndTime: BOOKING_END_HOUR
     };
 
     try {
@@ -688,10 +724,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     );
   };
 
-  if (!currentUser) {
-    return (
-      <div className="flex items-center justify-center h-[calc(100vh-200px)] animate-in fade-in zoom-in duration-300">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm">
+  const loginCard = (
+        <div className="relative bg-white p-8 rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm">
+          {loginPresentation === 'modal' && onCancelLogin && (
+            <button
+              type="button"
+              onClick={onCancelLogin}
+              className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              aria-label={t.close}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
           <div className="text-center mb-6">
             <div className="bg-brand-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-brand-500" />
@@ -756,8 +800,28 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </svg>
               <span>{t.signInWithGoogle}</span>
             </button>
+
+            {loginPresentation === 'modal' && onCancelLogin && (
+              <button
+                type="button"
+                onClick={onCancelLogin}
+                className="w-full border border-slate-200 text-slate-600 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+              >
+                {t.cancel}
+              </button>
+            )}
           </form>
         </div>
+  );
+
+  if (!currentUser) {
+    if (loginPresentation === 'modal') {
+      return loginCard;
+    }
+
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-200px)] animate-in fade-in zoom-in duration-300">
+        {loginCard}
       </div>
     );
   }
@@ -1301,6 +1365,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <table className="w-full text-sm text-left">
                         <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                             <tr>
+                                <th className="px-6 py-3">{t.image}</th>
                                 <th className="px-6 py-3">{t.name}</th>
                                 <th className="px-6 py-3">{t.type}</th>
                                 <th className="px-6 py-3">{t.capacity}</th>
@@ -1312,6 +1377,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <tbody className="divide-y divide-slate-100 font-medium">
                             {sortedRooms.map(room => (
                                 <tr key={room.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="h-12 w-20 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
+                                            {room.imageUrl ? (
+                                                <img src={room.imageUrl} alt={room.name} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-600" />
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 font-semibold text-slate-900">{room.name}</td>
                                     <td className="px-6 py-4">
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
@@ -1438,17 +1512,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Add/Edit Room Modal */}
       {isRoomModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                    <h3 className="text-lg font-bold text-slate-900">
-                        {editingRoom ? t.editRoom : t.addNewRoom}
-                    </h3>
-                    <button onClick={() => setIsRoomModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-                
-                <form onSubmit={handleRoomSubmit} className="p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] animate-in fade-in zoom-in duration-200 overflow-hidden">
+                <form onSubmit={handleRoomSubmit} className="flex max-h-[calc(100vh-2rem)] flex-col">
+                    <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-100">
+                        <h3 className="text-lg font-bold text-slate-900">
+                            {editingRoom ? t.editRoom : t.addNewRoom}
+                        </h3>
+                        <button type="button" onClick={() => setIsRoomModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-4">
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomName}</label>
                         <input 
@@ -1498,7 +1573,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         />
                     </div>
 
-
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomImage}</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-3 items-stretch">
+                            <div className="relative h-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                                {roomForm.imageUrl ? (
+                                    <img
+                                        src={roomForm.imageUrl}
+                                        alt={String(roomForm.name || t.roomImage)}
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-700" />
+                                )}
+                            </div>
+                            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center transition-colors hover:border-brand-300 hover:bg-brand-50">
+                                <Upload className="mb-2 h-5 w-5 text-brand-500" />
+                                <span className="text-sm font-bold text-slate-700">
+                                    {roomForm.imageUrl ? t.replaceRoomImage : t.clickToUpload}
+                                </span>
+                                <span className="mt-1 text-xs font-medium text-slate-500">{t.uploadRoomImageHelp}</span>
+                                <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                />
+                            </label>
+                        </div>
+                    </div>
 
                     <div className="border-t border-slate-100 pt-4 space-y-4">
                         <div className="flex items-center justify-between">
@@ -1513,7 +1616,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setRoomForm({...roomForm, isClosed: true})}
+                                    onClick={() => setRoomForm({
+                                        ...roomForm,
+                                        isClosed: true,
+                                        closureStartTime: roomForm.closureStartTime ?? BOOKING_START_HOUR,
+                                        closureEndTime: roomForm.closureEndTime &&
+                                            roomForm.closureEndTime > (roomForm.closureStartTime ?? BOOKING_START_HOUR) &&
+                                            roomForm.closureEndTime <= BOOKING_END_HOUR
+                                                ? roomForm.closureEndTime
+                                                : Math.min((roomForm.closureStartTime ?? BOOKING_START_HOUR) + 1, BOOKING_END_HOUR)
+                                    })}
                                     className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${roomForm.isClosed ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     {t.statusClosed}
@@ -1567,58 +1679,65 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartDateLabel}</label>
-                                        <input 
-                                            type="date"
-                                            value={roomForm.closureStartDate || ''}
-                                            onChange={(e) => setRoomForm({...roomForm, closureStartDate: e.target.value})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndDateLabel}</label>
-                                        <input 
-                                            type="date"
-                                            value={roomForm.closureEndDate || ''}
-                                            onChange={(e) => setRoomForm({...roomForm, closureEndDate: e.target.value})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                        />
-                                    </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureSelectedDateLabel}</label>
+                                    <input
+                                        type="date"
+                                        value={roomForm.closureStartDate || ''}
+                                        onChange={(e) => setRoomForm({
+                                            ...roomForm,
+                                            closureStartDate: e.target.value,
+                                            closureEndDate: e.target.value
+                                        })}
+                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
+                                    />
+                                    <p className="mt-1 text-[11px] font-semibold text-slate-500">{t.selectDisableDateFirst}</p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartTimeLabel}</label>
-                                        <select
-                                            value={roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : 7}
-                                            onChange={(e) => setRoomForm({...roomForm, closureStartTime: parseInt(e.target.value)})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                                        >
-                                            {Array.from({ length: 17 }, (_, i) => i + 7).map(h => (
-                                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                                            ))}
-                                        </select>
+                                {roomForm.closureStartDate && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartTimeLabel}</label>
+                                            <select
+                                                value={roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR}
+                                                onChange={(e) => {
+                                                    const start = parseInt(e.target.value);
+                                                    const currentEnd = roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12;
+                                                    setRoomForm({
+                                                        ...roomForm,
+                                                        closureStartTime: start,
+                                                        closureEndTime: currentEnd <= start ? Math.min(start + 1, BOOKING_END_HOUR) : currentEnd
+                                                    });
+                                                }}
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                                            >
+                                                {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR).map(h => (
+                                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndTimeLabel}</label>
+                                            <select
+                                                value={roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12}
+                                                onChange={(e) => setRoomForm({...roomForm, closureEndTime: parseInt(e.target.value)})}
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                                            >
+                                                {Array.from({
+                                                    length: BOOKING_END_HOUR - (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR)
+                                                }, (_, i) => i + (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR) + 1).map(h => (
+                                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndTimeLabel}</label>
-                                        <select
-                                            value={roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 24}
-                                            onChange={(e) => setRoomForm({...roomForm, closureEndTime: parseInt(e.target.value)})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                                        >
-                                            {Array.from({ length: 18 }, (_, i) => i + 7).map(h => (
-                                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         )}
                     </div>
+                    </div>
 
-                    <div className="pt-4 flex space-x-3">
+                    <div className="flex-shrink-0 border-t border-slate-100 bg-white p-6 flex space-x-3 shadow-[0_-8px_20px_rgba(15,23,42,0.04)]">
                         <button 
                             type="button"
                             onClick={() => setIsRoomModalOpen(false)}

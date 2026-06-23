@@ -197,6 +197,7 @@ const SmartRoomApplication: React.FC = () => {
   const [termsAccepted, setTermsAccepted] = useState<boolean | null>(null);
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
   
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -348,6 +349,16 @@ const SmartRoomApplication: React.FC = () => {
           if (deletedBookingIdsRef.current.has(docSnap.id)) return;
 
           const data = docSnap.data();
+          if (data.status === BookingStatus.NO_SHOW || data.status === 'MISSED_CHECK_IN') {
+            if (data.status === BookingStatus.NO_SHOW && !noShowRequestIdsRef.current.has(docSnap.id)) {
+              noShowRequestIdsRef.current.add(docSnap.id);
+              void markBookingNoShow(docSnap.id).catch((e) => {
+                console.error("Failed to archive existing NO_SHOW booking:", e);
+              });
+            }
+            return;
+          }
+
           const start = (data.startTime && typeof data.startTime.toDate === 'function')
             ? data.startTime.toDate()
             : new Date(data.startTime);
@@ -392,7 +403,7 @@ const SmartRoomApplication: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 3. Mark bookings as NO_SHOW if they are not checked in within 15 minutes of scheduled start time
+  // 3. Archive and remove bookings that are not checked in within 15 minutes of scheduled start time.
   useEffect(() => {
     const checkAutoCancellation = async () => {
       const nowTime = new Date();
@@ -406,15 +417,14 @@ const SmartRoomApplication: React.FC = () => {
       });
 
       for (const booking of bookingsToCancel) {
-        console.log(`Marking booking ${booking.id} (${booking.title}) as NO_SHOW - not checked in within 15 minutes.`);
+        console.log(`Archiving missed check-in booking ${booking.id} (${booking.title}) after the allowed check-in window.`);
         noShowRequestIdsRef.current.add(booking.id);
         try {
           await markBookingNoShow(booking.id);
-          setBookings(prev => prev.map(b => (
-            b.id === booking.id ? { ...b, status: BookingStatus.NO_SHOW } : b
-          )));
+          deletedBookingIdsRef.current.add(booking.id);
+          setBookings(prev => prev.filter(b => b.id !== booking.id));
         } catch (e) {
-          console.error("Failed to update booking to NO_SHOW:", e);
+          console.error("Failed to archive missed check-in booking:", e);
           noShowRequestIdsRef.current.delete(booking.id);
         }
       }
@@ -519,6 +529,38 @@ const SmartRoomApplication: React.FC = () => {
   const handleDeclineTerms = () => {
     setTermsAccepted(false);
   };
+
+  const handleAdminLogoutToUserEntry = () => {
+    setAdminUser(null);
+    setTermsAccepted(null);
+    setIsAdminLoginModalOpen(false);
+    try {
+      localStorage.removeItem('smartroom_admin_user');
+      localStorage.removeItem('smartroom_terms_accepted');
+    } catch (e) {
+      console.error(e);
+    }
+    navigateToView(USER_DEFAULT_VIEW);
+  };
+
+  const handleAdminLoginSuccessFromUser = () => {
+    setIsAdminLoginModalOpen(false);
+    setIsMobileDrawerOpen(false);
+    navigateToView('admin');
+  };
+
+  const isMissedCheckInBooking = (booking: Booking, now: Date) => {
+    if (booking.status === BookingStatus.NO_SHOW || (booking.status as string) === 'MISSED_CHECK_IN') return true;
+    if (booking.status === BookingStatus.REJECTED || booking.status === BookingStatus.VERIFIED) return false;
+    if (booking.actualStartTime) return false;
+
+    const cutoffTime = new Date(booking.startTime.getTime() + 15 * 60 * 1000);
+    return now > cutoffTime;
+  };
+
+  const activeBookings = useMemo(() => (
+    bookings.filter(booking => !isMissedCheckInBooking(booking, roomStatusNow))
+  ), [bookings, roomStatusNow]);
 
   const handleDeleteBooking = async (id: string) => {
     setConfirmModal({
@@ -825,7 +867,7 @@ const SmartRoomApplication: React.FC = () => {
         const newBookingId = Math.random().toString(36).substr(2, 9);
 
         // Check for double-bookings
-        const isOverlapping = bookings.some(b => 
+        const isOverlapping = activeBookings.some(b => 
           b.roomId === bookingData.roomId &&
           b.status !== BookingStatus.REJECTED &&
           b.startTime.getTime() < bookingData.endTime.getTime() &&
@@ -896,7 +938,7 @@ const SmartRoomApplication: React.FC = () => {
         }
 
         // Find all existing non-rejected bookings for this room on this date that haven't been checked in
-        const existingDateRoomBookings = bookings.filter(b => 
+        const existingDateRoomBookings = activeBookings.filter(b => 
           b.roomId === room.id &&
           b.status !== BookingStatus.REJECTED &&
           b.startTime < dayEnd &&
@@ -974,7 +1016,7 @@ const SmartRoomApplication: React.FC = () => {
       total: effectiveRooms.length,
       available: effectiveRooms.filter(r => {
           if (isRoomCurrentlyClosed(r, roomStatusNow)) return false;
-          return !bookings.some(b =>
+          return !activeBookings.some(b =>
             b.roomId === r.id && 
             roomStatusNow >= b.startTime && 
             roomStatusNow <= b.endTime &&
@@ -985,7 +1027,7 @@ const SmartRoomApplication: React.FC = () => {
 
   // Get bookings only for the currently selected room to pass to the modal (Exclude Rejected)
   const selectedRoomBookings = selectedRoomForModal 
-    ? bookings.filter(b => b.roomId === selectedRoomForModal.id && b.status !== BookingStatus.REJECTED)
+    ? activeBookings.filter(b => b.roomId === selectedRoomForModal.id && b.status !== BookingStatus.REJECTED)
     : [];
 
   if (currentView === 'admin') {
@@ -993,7 +1035,7 @@ const SmartRoomApplication: React.FC = () => {
       <div className="min-h-screen bg-slate-50 p-6 md:p-8 overflow-y-auto">
          <AdminPanel 
             rooms={effectiveRooms} 
-            bookings={bookings} 
+            bookings={activeBookings} 
             onDeleteBooking={handleDeleteBooking}
             onUpdateBooking={handleUpdateBooking}
             onApproveBooking={handleApproveBooking}
@@ -1006,7 +1048,7 @@ const SmartRoomApplication: React.FC = () => {
             showNotification={showNotification}
             currentUser={adminUser}
             setCurrentUser={setAdminUser}
-            onBackToUser={() => navigateToView('dashboard')}
+            onBackToUser={handleAdminLogoutToUserEntry}
          />
          {/* Toast message overlay for admin */}
          {toast.isOpen && (
@@ -1215,7 +1257,7 @@ const SmartRoomApplication: React.FC = () => {
         <div className="p-6 mt-auto border-t border-slate-200">
              <button 
                 onClick={() => {
-                  navigateToView('admin');
+                  setIsAdminLoginModalOpen(true);
                   setIsMobileDrawerOpen(false);
                 }}
                 className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'admin' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'}`}
@@ -1250,7 +1292,7 @@ const SmartRoomApplication: React.FC = () => {
         {currentView === 'dashboard' && (
              <Dashboard 
                 rooms={filteredRooms} 
-                bookings={bookings} 
+                bookings={activeBookings} 
                 maintenanceHistory={maintenanceHistory}
                 language={language} 
                 onDeleteBooking={handleDeleteBooking} 
@@ -1288,9 +1330,43 @@ const SmartRoomApplication: React.FC = () => {
         initialHours={preselectedHours}
       />
 
+      {isAdminLoginModalOpen && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center bg-slate-900/50 p-4 animate-in fade-in duration-200"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setIsAdminLoginModalOpen(false)}
+        >
+          <div
+            className="w-full max-w-sm animate-in zoom-in-95 slide-in-from-bottom-2 duration-200"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <AdminPanel
+              rooms={effectiveRooms}
+              bookings={activeBookings}
+              onDeleteBooking={handleDeleteBooking}
+              onUpdateBooking={handleUpdateBooking}
+              onApproveBooking={handleApproveBooking}
+              onRejectBooking={handleRejectBooking}
+              onAddRoom={handleAddRoom}
+              onUpdateRoom={handleUpdateRoom}
+              onDeleteRoom={handleDeleteRoom}
+              language={language}
+              setLanguage={setLanguage}
+              showNotification={showNotification}
+              currentUser={null}
+              setCurrentUser={setAdminUser}
+              loginPresentation="modal"
+              onCancelLogin={() => setIsAdminLoginModalOpen(false)}
+              onLoginSuccess={handleAdminLoginSuccessFromUser}
+            />
+          </div>
+        </div>
+      )}
+
       {/* AI Assistant */}
       <AIAssistant 
-        currentBookings={bookings} 
+        currentBookings={activeBookings} 
         rooms={effectiveRooms} 
         language={language} 
         onBookRoom={handleBookRoom}

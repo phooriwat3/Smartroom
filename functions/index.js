@@ -811,20 +811,21 @@ exports.markBookingNoShow = onCall(APP_HTTPS_OPTIONS, async (request) => {
     const data = request.data || {};
     const bookingId = assertDocumentId(data.bookingId, "bookingId");
     const bookingRef = db.collection("bookings").doc(bookingId);
+    const historyRef = db.collection("missedCheckInHistory").doc(bookingId);
 
     let result = null;
     await db.runTransaction(async (transaction) => {
       const bookingSnap = await transaction.get(bookingRef);
+      const historySnap = await transaction.get(historyRef);
       if (!bookingSnap.exists) {
+        if (historySnap.exists) {
+          result = { success: true, bookingId, archived: true, alreadyArchived: true };
+          return;
+        }
         throw new HttpsError("not-found", `Booking document not found: bookings/${bookingId}`);
       }
 
       const booking = bookingSnap.data() || {};
-      if (booking.status === "NO_SHOW") {
-        result = { success: true, bookingId, status: "NO_SHOW", alreadyMarked: true };
-        return;
-      }
-
       if (booking.status === "REJECTED" || booking.status === "VERIFIED" || booking.actualStartTime) {
         throw new HttpsError("failed-precondition", "This booking is not eligible for no-show marking.");
       }
@@ -839,12 +840,28 @@ exports.markBookingNoShow = onCall(APP_HTTPS_OPTIONS, async (request) => {
         throw new HttpsError("failed-precondition", "Booking is not past the no-show cutoff.");
       }
 
-      transaction.update(bookingRef, {
-        status: "NO_SHOW",
-        noShowMarkedAt: FieldValue.serverTimestamp(),
+      transaction.set(historyRef, {
+        ...booking,
+        id: bookingId,
+        originalBookingId: bookingId,
+        originalStatus: booking.status || "",
+        status: "MISSED_CHECK_IN",
+        missedCheckInAt: FieldValue.serverTimestamp(),
+        archivedAt: FieldValue.serverTimestamp(),
+        archivedReason: "Missed check-in window",
+        archivedFromPath: `bookings/${bookingId}`,
+        createdAt: booking.createdAt || FieldValue.serverTimestamp(),
+      }, {
+        merge: true,
       });
+      transaction.delete(bookingRef);
 
-      result = { success: true, bookingId, status: "NO_SHOW", alreadyMarked: false };
+      result = {
+        success: true,
+        bookingId,
+        archived: true,
+        alreadyArchived: historySnap.exists,
+      };
     });
 
     return result;

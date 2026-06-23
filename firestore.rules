@@ -172,5 +172,11 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+
+    // Missed check-in archive records are written only by Cloud Functions.
+    match /missedCheckInHistory/{historyId} {
+      allow get, list: if isAdmin();
+      allow create, update, delete: if false;
+    }
   }
 }

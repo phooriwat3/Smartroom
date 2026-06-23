@@ -254,6 +254,13 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
+  const isNoCheckIn = (b: Booking) => {
+    if (b.status === BookingStatus.NO_SHOW) return true;
+    if (b.status !== BookingStatus.CONFIRMED || b.actualStartTime) return false;
+    const cutoffTime = new Date(b.startTime.getTime() + 15 * 60 * 1000);
+    return liveTime > cutoffTime;
+  };
+
   // Helper inside All-Room cards stats calculation
   const getAllBookingsForDate = useMemo(() => {
     return bookings.filter(b => {
@@ -265,16 +272,10 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (!isSameDate) return false;
 
       if (b.status === BookingStatus.REJECTED) return false;
+      if (isNoCheckIn(b)) return false;
       return true;
     });
   }, [bookings, selectedDateObj, liveTime]);
-
-  const isNoCheckIn = (b: Booking) => {
-    if (b.status === BookingStatus.NO_SHOW) return true;
-    if (b.status !== BookingStatus.CONFIRMED || b.actualStartTime) return false;
-    const cutoffTime = new Date(b.startTime.getTime() + 15 * 60 * 1000);
-    return liveTime > cutoffTime;
-  };
 
   const sortBookingsByCurrentPriority = (a: Booking, b: Booking) => {
     const nowTime = liveTime.getTime();
@@ -351,6 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       if (!isSameDate) return false;
 
       if (b.status === BookingStatus.REJECTED) return false;
+      if (isNoCheckIn(b)) return false;
       return true;
     }).sort(sortBookingsByCurrentPriority);
   }, [bookings, selectedRoomId, selectedDateObj, liveTime]);
