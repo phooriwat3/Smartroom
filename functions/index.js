@@ -144,24 +144,24 @@ function escapeHtml(value) {
 }
 
 function buildVerificationEmailPayload(email, bookingId, verifyUrl, booking) {
-  const title = booking.title || "SmartRoom booking";
+  const title = booking.title || "Tokinsmartroom booking";
   const startTime = formatDateTimeForEmail(booking.startTime);
   const endTime = formatDateTimeForEmail(booking.endTime);
 
   return {
     to: email,
-    subject: `[YAGEO SmartRoom] Verify booking ${bookingId}`,
-    senderName: "YAGEO SmartRoom",
+    subject: `[Tokinsmartroom] Verify booking ${bookingId}`,
+    senderName: "Tokinsmartroom",
     message: [
       '<div style="margin:0;padding:24px;background:#fff7ed;font-family:Arial,Helvetica,sans-serif;color:#1f2937;">',
       '<div style="max-width:640px;margin:0 auto;background:#ffffff;border:1px solid #fed7aa;border-radius:14px;overflow:hidden;">',
       '<div style="background:#f97316;padding:22px 26px;color:#ffffff;">',
-      '<div style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">YAGEO SmartRoom</div>',
+      '<div style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.9;">Tokinsmartroom</div>',
       '<div style="font-size:24px;line-height:30px;font-weight:800;margin-top:6px;">Booking Verification</div>',
       '</div>',
       '<div style="padding:26px;">',
       '<p style="margin:0 0 14px;font-size:15px;line-height:22px;">Hello,</p>',
-      '<p style="margin:0 0 20px;font-size:15px;line-height:22px;">Please verify your SmartRoom booking by pressing the button below. This confirms the booking and records your check-in.</p>',
+      '<p style="margin:0 0 20px;font-size:15px;line-height:22px;">Please verify your Tokinsmartroom booking by pressing the button below. This confirms the booking and records your check-in.</p>',
       '<div style="border:1px solid #fed7aa;border-radius:12px;background:#fff7ed;padding:18px;margin:0 0 22px;">',
       `<div style="font-size:18px;font-weight:800;color:#0f172a;margin-bottom:12px;">${escapeHtml(title)}</div>`,
       '<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;line-height:20px;">',
@@ -182,7 +182,7 @@ function buildVerificationEmailPayload(email, bookingId, verifyUrl, booking) {
       `<p style="margin:0;font-size:12px;line-height:18px;word-break:break-all;color:#c2410c;">${escapeHtml(verifyUrl)}</p>`,
       '</div>',
       '<div style="padding:16px 26px;background:#fff7ed;border-top:1px solid #fed7aa;color:#9a3412;font-size:12px;line-height:18px;">',
-      'This is an automated message from YAGEO SmartRoom.',
+      'This is an automated message from Tokinsmartroom.',
       '</div>',
       '</div>',
       '</div>',
@@ -477,6 +477,11 @@ async function verifyBookingTokenInternal(bookingId, token) {
 
     const booking = bookingSnap.data() || {};
     const storedTokenHash = booking.verificationTokenHash;
+    const alreadyVerified = booking.status === "VERIFIED" || !!booking.actualStartTime;
+    if (alreadyVerified && !storedTokenHash) {
+      throw new HttpsError("failed-precondition", "This verification link has already been used.");
+    }
+
     if (!constantTimeEqualHex(storedTokenHash, tokenHash)) {
       throw new HttpsError("permission-denied", "Verification token is invalid.");
     }
@@ -490,11 +495,14 @@ async function verifyBookingTokenInternal(bookingId, token) {
       throw new HttpsError("failed-precondition", "This booking can no longer be verified.");
     }
 
-    const alreadyVerified = booking.status === "VERIFIED" || !!booking.actualStartTime;
     const update = {
       status: "VERIFIED",
       verifiedAt: FieldValue.serverTimestamp(),
       verificationMethod: "qr",
+      verificationTokenHash: FieldValue.delete(),
+      verificationTokenCreatedAt: FieldValue.delete(),
+      verificationTokenExpiresAt: FieldValue.delete(),
+      verifyUrl: FieldValue.delete(),
     };
 
     if (!booking.actualStartTime) {
