@@ -1,0 +1,168 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE HELPER FUNCTIONS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isSuperAdmin() {
+      return isSignedIn() && (
+        request.auth.token.super_admin == true ||
+        request.auth.token.role == "SUPER_ADMIN" ||
+        request.auth.token.email == "phooriwat456@gmail.com" ||
+        (
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.role == "SUPER_ADMIN"
+        ) ||
+        (
+          request.auth.token.email is string &&
+          exists(/databases/$(database)/documents/admins/$(request.auth.token.email)) &&
+          get(/databases/$(database)/documents/admins/$(request.auth.token.email)).data.role == "SUPER_ADMIN"
+        )
+      );
+    }
+
+    function isAdmin() {
+      return isSuperAdmin() || (
+        isSignedIn() && (
+          exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+          request.auth.token.email == "phooriwat456@gmail.com" ||
+          (
+            request.auth.token.email is string &&
+            exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+          )
+        )
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function bangkokHour(timestamp) {
+      return (timestamp.hours() + 7) % 24;
+    }
+
+    function isWithinBookingHours(data) {
+      return bangkokHour(data.startTime) >= 7 &&
+             bangkokHour(data.startTime) < 19 &&
+             bangkokHour(data.endTime) <= 19 &&
+             data.startTime.minutes() == 0 &&
+             data.startTime.seconds() == 0 &&
+             data.endTime.minutes() == 0 &&
+             data.endTime.seconds() == 0;
+    }
+
+    // Base validation helper for Room items
+    function isValidRoom(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() > 0 && data.name.size() <= 200 &&
+             data.type is string && (data.type == 'Meeting Room' || data.type == 'Reception Area' || data.type == 'Training Room') &&
+             data.capacity is number && data.capacity > 0 && data.capacity <= 1000 &&
+             data.amenities is list && data.amenities.size() <= 20 &&
+             data.imageUrl is string && data.imageUrl.size() <= 1000000; // Allow Base64 values for newly uploaded images
+    }
+
+    // Base validation helper for Booking items
+    function isValidBooking(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.roomId is string && data.roomId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.organizer is string && data.organizer.size() > 0 && data.organizer.size() <= 100 &&
+             data.department is string && data.department.size() <= 120 &&
+             data.employeeId is string && data.employeeId.size() <= 60 &&
+             data.startTime is timestamp &&
+             data.endTime is timestamp && data.endTime > data.startTime &&
+             isWithinBookingHours(data) &&
+             data.status is string && (data.status == 'PENDING' || data.status == 'CONFIRMED' || data.status == 'REJECTED' || data.status == 'NO_SHOW');
+    }
+
+    // Base validation helper for room maintenance history
+    function isValidRoomMaintenanceRecord(data) {
+      return data.id is string && data.id.size() <= 180 &&
+             data.roomId is string && data.roomId.size() <= 128 &&
+             data.roomName is string && data.roomName.size() > 0 && data.roomName.size() <= 200 &&
+             data.reason is string && data.reason.size() > 0 && data.reason.size() <= 200 &&
+             data.startDate is string && data.startDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             data.endDate is string && data.endDate.matches('^\\d{4}-\\d{2}-\\d{2}$') &&
+             data.endDate >= data.startDate &&
+             data.startTime is number && data.startTime >= 0 && data.startTime <= 24 &&
+             data.endTime is number && data.endTime >= 0 && data.endTime <= 24 &&
+             data.endTime > data.startTime;
+    }
+
+    // --- COLLECTION RULES MATCHES ---
+
+    // Rooms Match Block
+    match /rooms/{roomId} {
+      allow get, list: if true; // Public read access for room viewing
+
+      // Allow admins to create any room, OR allow initial seeding of predefined default rooms
+      allow create: if (roomId in ['m1', 'm2', 'r1', 'r2', 'r3', 't1'] && isValidId(roomId) && incoming().id == roomId) ||
+                       (isAdmin() && isValidId(roomId) && isValidRoom(incoming()) && incoming().id == roomId);
+      
+      allow update: if isAdmin() && isValidRoom(incoming()) && incoming().id == roomId;
+
+      allow delete: if isAdmin();
+    }
+
+    // Bookings Match Block
+    match /bookings/{bookingId} {
+      allow get, list: if true; // Bookings must be visible to everyone for full schedule display
+
+      // Anyone (guests/anonymous) can create a booking request, but it must be valid and reference a valid existant Room document or a standard default room.
+      allow create: if (bookingId in ['b1', 'b2'] && isValidId(bookingId) && incoming().id == bookingId) ||
+                       (isValidId(bookingId) && 
+                        isValidBooking(incoming()) && 
+                        incoming().id == bookingId && 
+                        (exists(/databases/$(database)/documents/rooms/$(incoming().roomId)) || incoming().roomId in ['m1', 'm2', 'r1', 'r2', 'r3', 't1']));
+
+      // Update operations: Admins can update any field or change the status. Normal guests can edit of booking is restricted.
+      allow update: if (isAdmin() && isValidBooking(incoming()) && incoming().id == bookingId) || (
+                       // Prevent modification of status by anyone who is not an Admin.
+                       // Guests can cancel their own bookings or modify them without changing status.
+                       isValidBooking(incoming()) && 
+                       incoming().id == bookingId && 
+                       incoming().status == resource.data.status && 
+                       incoming().roomId == resource.data.roomId
+                    );
+
+      // Delete operations: restricted to Admins
+      allow delete: if isAdmin();
+    }
+
+    // User-based Admins Collection
+    match /admins/{adminId} {
+      allow get, list: if true;
+      allow create, update: if isSuperAdmin() && isValidId(adminId) && incoming().id == adminId;
+      // App-local Super Admin sessions are verified by the backend deleteAdminAccount function.
+      // Firestore rules cannot read React/local app session state, so client-side admin deletes stay blocked.
+      allow delete: if false;
+    }
+
+    // Room maintenance history is used by timeline-grid historical views
+    match /roomMaintenanceHistory/{recordId} {
+      allow get, list: if true;
+      allow create, update: if isAdmin() &&
+                            recordId.size() <= 180 &&
+                            isValidRoomMaintenanceRecord(incoming()) &&
+                            incoming().id == recordId;
+      allow delete: if isAdmin();
+    }
+  }
+}

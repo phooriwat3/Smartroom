@@ -1,0 +1,118 @@
+{
+  "entities": {
+    "Room": {
+      "title": "Room",
+      "description": "Representing a meeting room, reception area, or training room.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the room."
+        },
+        "name": {
+          "type": "string",
+          "description": "Name of the room."
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "Meeting Room",
+            "Reception Area",
+            "Training Room"
+          ],
+          "description": "Type of the room."
+        },
+        "capacity": {
+          "type": "integer",
+          "description": "Maximum seating capacity."
+        },
+        "amenities": {
+          "type": "array",
+          "description": "List of amenities available in the room."
+        },
+        "imageUrl": {
+          "type": "string",
+          "description": "URL of the room's image."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "type",
+        "capacity",
+        "imageUrl"
+      ]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Representing a schedule reservation of a particular room.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier of the booking."
+        },
+        "roomId": {
+          "type": "string",
+          "description": "Reference ID of the booked room."
+        },
+        "title": {
+          "type": "string",
+          "description": "Title or reason of the booking."
+        },
+        "organizer": {
+          "type": "string",
+          "description": "Person organizing the meeting."
+        },
+        "department": {
+          "type": "string",
+          "description": "Department/branch of the organizer."
+        },
+        "employeeId": {
+          "type": "string",
+          "description": "Employee ID of the organizer."
+        },
+        "startTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Starting date and time of the booking."
+        },
+        "endTime": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Ending date and time of the booking."
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "PENDING",
+            "CONFIRMED",
+            "REJECTED"
+          ],
+          "description": "Approval status of the booking request."
+        }
+      },
+      "required": [
+        "id",
+        "roomId",
+        "title",
+        "organizer",
+        "department",
+        "employeeId",
+        "startTime",
+        "endTime",
+        "status"
+      ]
+    }
+  },
+  "firestore": {
+    "/rooms/{roomId}": {
+      "schema": "Room",
+      "description": "Collection of all rooms in the smart room dashboard."
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Collection of all room reservations."
+    }
+  }
+}
