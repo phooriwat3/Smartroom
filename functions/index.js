@@ -477,12 +477,33 @@ async function verifyBookingTokenInternal(bookingId, token) {
 
     const booking = bookingSnap.data() || {};
     const storedTokenHash = booking.verificationTokenHash;
+    const usedTokenHash = booking.verificationTokenUsedHash;
     const alreadyVerified = booking.status === "VERIFIED" || !!booking.actualStartTime;
-    if (alreadyVerified && !storedTokenHash) {
-      throw new HttpsError("failed-precondition", "This verification link has already been used.");
+    const tokenMatchesActive = constantTimeEqualHex(storedTokenHash, tokenHash);
+    const tokenMatchesUsed = constantTimeEqualHex(usedTokenHash, tokenHash);
+
+    if (alreadyVerified) {
+      if (!storedTokenHash || tokenMatchesUsed) {
+        result = {
+          success: true,
+          alreadyVerified: true,
+          bookingId,
+          status: "VERIFIED",
+          roomId: booking.roomId || "",
+          title: booking.title || "",
+          organizer: booking.organizer || "",
+          startTime: serializeDate(booking.startTime),
+          endTime: serializeDate(booking.endTime),
+        };
+        return;
+      }
+
+      if (!tokenMatchesActive) {
+        throw new HttpsError("permission-denied", "Verification token is invalid.");
+      }
     }
 
-    if (!constantTimeEqualHex(storedTokenHash, tokenHash)) {
+    if (!tokenMatchesActive) {
       throw new HttpsError("permission-denied", "Verification token is invalid.");
     }
 
@@ -499,6 +520,7 @@ async function verifyBookingTokenInternal(bookingId, token) {
       status: "VERIFIED",
       verifiedAt: FieldValue.serverTimestamp(),
       verificationMethod: "qr",
+      verificationTokenUsedHash: tokenHash,
       verificationTokenHash: FieldValue.delete(),
       verificationTokenCreatedAt: FieldValue.delete(),
       verificationTokenExpiresAt: FieldValue.delete(),
