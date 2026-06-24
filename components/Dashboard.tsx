@@ -1082,8 +1082,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                             {/* Hour Cells for Row 1 */}
                             {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
                               return (
-                                <td key={hour} className="px-1 py-1 relative h-11 border-r border-cyan-50 min-w-[140px]">
-                                  <div className={`w-full h-full rounded-md flex items-center justify-center text-[10.5px] transition-all border px-2 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
+                                <td key={hour} className="px-1.5 py-1.5 relative h-16 border-r border-cyan-50 min-w-[160px]">
+                                  <div className={`w-full h-full rounded-md flex items-center justify-center text-[11px] transition-all border px-2.5 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                                       ${status === 'occupied'
                                       ? isNoCheckInStatus
                                         ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
@@ -1109,13 +1109,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     }
                                   >
                                     {status === 'occupied' && booking ? (
-                                      <span className="block w-full truncate text-center font-bold">
-                                        {isNoCheckInStatus ? (
-                                          language === 'th' ? 'ไม่มา Check-in' : 'No Check-in'
-                                        ) : (
-                                          <>{booking.organizer} <span className="text-[9px] px-1 bg-white/65 text-slate-700 rounded-sm font-semibold">{booking.deskNumber}</span></>
+                                      <div className="w-full text-center">
+                                        <div className="font-bold text-[11.5px] leading-tight">
+                                          {isNoCheckInStatus ? (
+                                            language === 'th' ? 'ไม่มา Check-in' : 'No Check-in'
+                                          ) : booking.organizer}
+                                        </div>
+                                        {!isNoCheckInStatus && booking.deskNumber && (
+                                          <div className="text-[9.5px] mt-0.5 px-1.5 bg-white/65 text-slate-700 rounded-sm font-semibold inline-block">{booking.deskNumber}</div>
                                         )}
-                                      </span>
+                                      </div>
                                     ) : isClosedHour ? (
                                       <span className="block w-full truncate text-center text-[9px] font-bold text-slate-700">
                                         {temporarilyDisabledLabel}
@@ -1141,8 +1144,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                             {/* Hour Cells for Row 2 */}
                             {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
                               return (
-                                <td key={hour} className="px-1 py-1 relative h-9 border-r border-cyan-50 min-w-[140px]">
-                                  <div className={`w-full h-full rounded-md flex items-center justify-center text-[10px] transition-all border px-2 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
+                                <td key={hour} className="px-1.5 py-1.5 relative h-12 border-r border-cyan-50 min-w-[160px]">
+                                  <div className={`w-full h-full rounded-md flex items-center justify-center text-[10.5px] transition-all border px-2.5 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                                       ${status === 'occupied'
                                       ? isNoCheckInStatus
                                         ? 'bg-rose-50 border-rose-200 text-rose-700 font-semibold'
@@ -1234,11 +1237,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                 const isSelected = selectedHours.includes(hour);
 
                 return (
-                  <div key={hour} className="flex items-center group">
-                    <div className="w-20 text-right text-xs font-mono text-slate-400 pr-4 py-3 font-bold">
+                  <div key={hour} className="flex items-stretch group">
+                    <div className="w-20 text-right text-xs font-mono text-slate-400 pr-4 py-4 font-bold flex-shrink-0 flex items-center justify-end">
                       {formatTimeValue(hour, language)}
                     </div>
-                    <div className="flex-grow relative h-10">
+                    <div className="flex-grow relative min-h-[68px]">
                       <div
                         onClick={() => {
                           if (!isPast && !isClosedHour && status !== 'occupied') {
@@ -1251,7 +1254,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             });
                           }
                         }}
-                        className={`absolute inset-0 rounded-lg border flex items-center px-4 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
+                        className={`absolute inset-0 rounded-lg border flex flex-col justify-center px-4 py-2.5 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                           ${status === 'occupied'
                             ? isNoCheckInStatus
                               ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold cursor-not-allowed'
@@ -1278,14 +1281,21 @@ const Dashboard: React.FC<DashboardProps> = ({
                         }
                       >
                         {status === 'occupied' ? (
-                          <div className="flex justify-between w-full items-center">
-                            <span className="text-sm font-bold truncate">
-                              {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : (booking?.title ? translateText(booking.title, language) : '')}
-                              {isPending && <span className="ml-2 text-[10px] uppercase font-bold tracking-wider opacity-75">({t.pending})</span>}
-                            </span>
-                            <span className="text-xs opacity-75 hidden sm:block font-bold">
-                              {booking?.organizer} {booking?.department ? `(${booking.department})` : ''}
-                            </span>
+                          <div className="flex flex-col gap-0.5 w-full">
+                            <div className="flex justify-between items-start gap-2 w-full">
+                              <span className="text-sm font-bold leading-snug flex-1 min-w-0">
+                                {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : (booking?.title ? translateText(booking.title, language) : '')}
+                                {isPending && <span className="ml-2 text-[10px] uppercase font-bold tracking-wider opacity-75">({t.pending})</span>}
+                              </span>
+                              {booking?.organizer && (
+                                <span className="text-xs opacity-80 font-bold flex-shrink-0 whitespace-nowrap">
+                                  {booking.organizer}
+                                </span>
+                              )}
+                            </div>
+                            {booking?.department && (
+                              <span className="text-[11px] opacity-70 font-semibold">{booking.department}</span>
+                            )}
                           </div>
                         ) : isClosedHour ? (
                           <span className="text-xs font-bold text-slate-700 flex items-center">
