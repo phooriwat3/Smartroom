@@ -1070,7 +1070,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <thead>
                     <tr className="bg-gradient-to-r from-cyan-50 via-sky-50 to-blue-50 border-b border-cyan-100">
                       <th className="px-4 py-4 text-left font-bold text-sky-900 w-44 sticky left-0 bg-cyan-50 z-10 shadow-sm md:shadow-none border-r border-cyan-100">{language === 'th' ? 'ห้อง' : 'Type of Room'}</th>
-                      <th className="px-3 py-4 text-left font-bold text-sky-800 w-36 border-r border-cyan-100 bg-sky-50">{language === 'th' ? 'รายการ' : 'Description'}</th>
                       {hours.map(h => (
                         <th key={h} className="px-2 py-3 text-center font-mono text-xs text-sky-700 font-bold timeline-grid-slot">
                           {formatTimeValue(h, language)}
@@ -1104,10 +1103,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                       return (
                         <React.Fragment key={room.id}>
-                          {/* ROW 1: Reserved Person */}
-                          <tr className="hover:bg-emerald-50/20">
-                            {/* Room details cell - rowSpan={2} */}
-                            <td rowSpan={2} className="px-4 py-4 font-semibold text-slate-800 sticky left-0 bg-white z-10 border-r border-cyan-100 shadow-[2px_0_8px_rgba(14,165,233,0.08)] align-middle">
+                          {/* ROW: Room Schedule */}
+                          <tr className="hover:bg-emerald-50/20 border-b border-cyan-100">
+                            {/* Room details cell */}
+                            <td className="px-4 py-4 font-semibold text-slate-800 sticky left-0 bg-white z-10 border-r border-cyan-100 shadow-[2px_0_8px_rgba(14,165,233,0.08)] align-middle">
                               <div className="flex items-center">
                                 <div className={`w-2.5 h-2.5 rounded-full mr-2 shrink-0 ${room.id === 'm1' || room.id === 'm2' ? 'bg-indigo-400' : room.id.startsWith('r') ? 'bg-pink-400' : 'bg-teal-400'}`}></div>
                                 <span className="truncate text-sm font-bold text-slate-800">{room.name}</span>
@@ -1117,16 +1116,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </div>
                             </td>
 
-                            {/* Description Category for Row 1 */}
-                            <td className="px-3 py-2.5 text-xs font-bold text-sky-700 bg-cyan-50/60 border-r border-cyan-100 whitespace-nowrap align-middle">
-                              {language === 'th' ? 'ผู้จอง (Reserved)' : 'Reserved person'}
-                            </td>
-
-                            {/* Hour Cells for Row 1 */}
+                            {/* Hour Cells for Room */}
                             {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
                               return (
                                 <td key={hour} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                  <div className={`w-full h-full rounded-md flex ${status === 'occupied' && booking ? 'flex-col justify-center py-1 text-left' : 'items-center justify-center text-[11px]'} transition-all border px-2.5 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
+                                  <div className={`w-full h-full rounded-md flex ${status === 'occupied' && booking ? 'flex-col justify-start py-1.5 text-left gap-0.5' : 'items-center justify-center text-[11px]'} transition-all border px-2.5 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                                       ${status === 'occupied'
                                       ? isNoCheckInStatus
                                         ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
@@ -1136,7 +1130,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       : isClosedHour
                                         ? 'bg-slate-100 border-slate-300 text-slate-700 font-semibold'
                                         : isPast
-                                          ? 'bg-slate-100 border-slate-200 text-slate-400 font-medium'
+                                          ? 'bg-slate-100 border-slate-205 text-slate-400 font-medium'
                                           : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-300 hover:text-emerald-950 cursor-pointer shadow-sm hover:scale-[1.01] transition-all duration-200'
                                     }`}
                                     onClick={() => {
@@ -1152,23 +1146,33 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     }
                                   >
                                     {status === 'occupied' && booking ? (
-                                      <div className="w-full text-left flex flex-col gap-0.5 leading-normal">
-                                        <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold self-start border ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
-                                          {getBookingDisplayLabel(booking)}
-                                        </span>
-                                        <div className="truncate text-[10px] text-slate-805">
-                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'ชื่อ: ' : 'name: '}</span>
-                                          {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
+                                      <>
+                                        {/* Row 1: name & badge */}
+                                        <div className="flex justify-between items-start w-full gap-2">
+                                          <div className="truncate text-[10px] text-slate-800 font-bold flex-1 min-w-0">
+                                            <span className="font-semibold text-slate-500">{language === 'th' ? 'ชื่อ: ' : 'name: '}</span>
+                                            {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
+                                          </div>
+                                          <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
+                                            {getBookingDisplayLabel(booking)}
+                                          </span>
                                         </div>
-                                        <div className="truncate text-[10px] text-slate-650">
+                                        {/* Row 2: dept */}
+                                        <div className="truncate text-[10px] text-slate-600">
                                           <span className="font-semibold text-slate-500">{language === 'th' ? 'แผนก: ' : 'dept: '}</span>
                                           {booking.department || '-'}
                                         </div>
-                                        <div className="truncate text-[10px] text-slate-650">
+                                        {/* Row 3: desk */}
+                                        <div className="truncate text-[10px] text-slate-600">
                                           <span className="font-semibold text-slate-500">{language === 'th' ? 'โต๊ะ: ' : 'desk: '}</span>
                                           {booking.deskNumber || '-'}
                                         </div>
-                                      </div>
+                                        {/* Row 4: purpose */}
+                                        <div className="truncate text-[10px] text-slate-600">
+                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'วัตถุประสงค์: ' : 'purpose: '}</span>
+                                          {translateText(booking.title, language) || '-'}
+                                        </div>
+                                      </>
                                     ) : isClosedHour ? (
                                       <span className="block w-full truncate text-center text-[9px] font-bold text-slate-700">
                                         {temporarilyDisabledLabel}
@@ -1177,53 +1181,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       <span className="opacity-30">-</span>
                                     ) : (
                                       <span className="text-[9.5px] text-emerald-600/70">{language === 'th' ? 'ว่าง' : 'Available'}</span>
-                                    )}
-                                  </div>
-                                </td>
-                              );
-                            })}
-                          </tr>
-
-                          {/* ROW 2: Purpose */}
-                          <tr className="hover:bg-emerald-50/20 border-b border-cyan-100">
-                            {/* Description Category for Row 2 */}
-                            <td className="px-3 py-2 text-xs font-bold text-sky-600 bg-sky-50/60 border-r border-cyan-100 whitespace-nowrap align-middle">
-                              {language === 'th' ? 'วัตถุประสงค์ (Purpose)' : 'Purpose'}
-                            </td>
-
-                            {/* Hour Cells for Row 2 */}
-                            {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
-                              return (
-                                <td key={hour} className="px-1.5 py-1.5 relative h-16 border-r border-cyan-50 timeline-grid-slot">
-                                  <div className={`w-full h-full rounded-md flex items-center justify-center text-[10.5px] transition-all border px-2.5 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
-                                      ${status === 'occupied'
-                                      ? isNoCheckInStatus
-                                        ? 'bg-rose-50 border-rose-200 text-rose-700 font-semibold'
-                                        : isPending
-                                          ? 'bg-amber-50 border-amber-300 text-amber-900'
-                                          : 'bg-orange-100 border-orange-300 text-orange-950 font-medium'
-                                      : isClosedHour
-                                        ? 'bg-slate-50 border-slate-200 text-slate-700'
-                                        : isPast
-                                          ? 'bg-slate-100 border-slate-200 text-slate-450'
-                                          : 'bg-white border-dashed border-emerald-200 text-emerald-500 hover:bg-emerald-50 hover:border-emerald-300 cursor-pointer'
-                                    }`}
-                                    onClick={() => {
-                                      if (status !== 'occupied' && !isPast && !isClosedHour && onBook) {
-                                        onBook(room, dateStr, [hour]);
-                                      }
-                                    }}
-                                  >
-                                    {status === 'occupied' && booking ? (
-                                      <span className="block w-full truncate text-center text-slate-700 font-semibold italic">
-                                        {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : (translateText(booking.title, language) || (language === 'th' ? 'การประชุม' : 'Meeting'))}
-                                      </span>
-                                    ) : isClosedHour ? (
-                                      <span className="block w-full truncate text-center text-[9px] font-semibold text-slate-600" title={getDisabledReasonText(closureCheck.reason)}>
-                                        {getDisabledReasonText(closureCheck.reason)}
-                                      </span>
-                                    ) : (
-                                      <span className="text-[9px] text-slate-300">-</span>
                                     )}
                                   </div>
                                 </td>
