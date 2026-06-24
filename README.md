@@ -16,7 +16,19 @@ View your app in AI Studio: https://ai.studio/apps/28114784-a066-482c-9738-dfb6c
 1. Install dependencies:
    `npm install`
 2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
+3. For local verification email testing, copy `functions/.env.example` to `functions/.env` and set `POWER_AUTOMATE_VERIFICATION_FLOW_URL` to the Power Automate HTTP trigger URL.
+4. Run the app:
    `npm run dev`
 
 For LAN access, open the app from the host PC IP and port, for example `http://192.168.x.x:3000`. Booking verification emails use the same LAN origin that created the booking.
+
+## Verification Email Configuration
+
+The Cloud Functions backend sends booking verification emails through Power Automate. Production must store the flow URL as a Firebase Functions secret:
+
+```bash
+firebase functions:secrets:set POWER_AUTOMATE_VERIFICATION_FLOW_URL --project sutsmartbus-495306
+firebase deploy --only functions --project sutsmartbus-495306
+```
+
+Do not commit the real Power Automate URL. `functions/.env` is ignored by git and is only for local development.

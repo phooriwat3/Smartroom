@@ -21,6 +21,8 @@ type AppView = 'grid' | 'dashboard' | 'admin';
 type RouteMode = 'app' | 'verify';
 
 const USER_DEFAULT_VIEW: AppView = 'dashboard';
+const VERIFICATION_WINDOW_BEFORE_MS = 15 * 60 * 1000;
+const VERIFICATION_WINDOW_AFTER_MS = 15 * 60 * 1000;
 
 const isAdminRoutePath = (path?: string) => {
   const routePath = path ?? (typeof window !== 'undefined' ? window.location.pathname : '/');
@@ -41,6 +43,126 @@ const getRouteMode = (path?: string): RouteMode => {
 
 const isYageoEmail = (email?: string) => /^[^\s@]+@yageo\.com$/i.test((email || '').trim());
 
+const formatBookingTime = (date: Date, language: 'th' | 'en') => date.toLocaleTimeString(language === 'th' ? 'th-TH' : 'en-GB', {
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+const formatBookingDateLabel = (date: Date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
+};
+
+const isFutureBookingDate = (date: Date) => {
+  const bookingDay = new Date(date);
+  bookingDay.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return bookingDay.getTime() > today.getTime();
+};
+
+const getBookingConfirmationMessage = (startTime: Date, language: 'th' | 'en', emailStatus?: 'queued' | 'sent') => {
+  const sendAt = new Date(startTime.getTime() - VERIFICATION_WINDOW_BEFORE_MS);
+  const windowStart = sendAt;
+  const windowEnd = new Date(startTime.getTime() + VERIFICATION_WINDOW_AFTER_MS);
+  const sendLabel = formatBookingTime(sendAt, language);
+  const windowStartLabel = formatBookingTime(windowStart, language);
+  const windowEndLabel = formatBookingTime(windowEnd, language);
+  const includeDate = isFutureBookingDate(startTime);
+  const dateLabel = formatBookingDateLabel(startTime);
+
+  if (language === 'th') {
+    const bookingMessage = 'ระบบทำการออกเลขและยืนยันการจองตารางเวลาของคุณเรียบร้อยแล้ว!';
+    const emailMessage = emailStatus === 'sent'
+      ? 'อีเมลยืนยันของคุณถูกส่งแล้ว'
+      : includeDate
+        ? `อีเมลยืนยันของคุณจะถูกส่งวันที่ ${dateLabel} เวลา ${sendLabel}`
+        : `อีเมลยืนยันของคุณจะถูกส่งเวลา ${sendLabel}`;
+    const confirmMessage = includeDate
+      ? `กรุณายืนยันวันที่ ${dateLabel} ระหว่าง ${windowStartLabel} - ${windowEndLabel}`
+      : `กรุณายืนยันระหว่าง ${windowStartLabel} - ${windowEndLabel}`;
+
+    return `${bookingMessage} ${emailMessage} ${confirmMessage} หากไม่ยืนยันภายในช่วงเวลานี้ ระบบจะยกเลิกการจองของคุณโดยอัตโนมัติ`;
+  }
+
+  const bookingMessage = 'Your booking number has been generated and your time slot has been confirmed successfully!';
+  const emailMessage = emailStatus === 'sent'
+    ? 'Your verification email has been sent.'
+    : includeDate
+      ? `Your verification email will be sent on ${dateLabel} at ${sendLabel}.`
+      : `Your verification email will be sent at ${sendLabel}.`;
+  const confirmMessage = includeDate
+    ? `Please confirm on ${dateLabel} between ${windowStartLabel} - ${windowEndLabel}.`
+    : `Please confirm between ${windowStartLabel} - ${windowEndLabel}.`;
+
+  return `${bookingMessage} ${emailMessage} ${confirmMessage} If you do not confirm within this time window, your booking will be automatically cancelled.`;
+};
+
+interface BookingConfirmationModalProps {
+  isOpen: boolean;
+  title: string;
+  message: string;
+  confirmText: string;
+  closeLabel: string;
+  onClose: () => void;
+}
+
+const BookingConfirmationModal: React.FC<BookingConfirmationModalProps> = ({
+  isOpen,
+  title,
+  message,
+  confirmText,
+  closeLabel,
+  onClose,
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm animate-in fade-in duration-200"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="booking-confirmation-title"
+    >
+      <div className="relative w-full max-w-lg rounded-xl border border-emerald-100 bg-white p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700"
+          aria-label={closeLabel}
+        >
+          <X className="h-5 w-5" />
+        </button>
+
+        <div className="pr-10">
+          <div className="mb-4 inline-flex h-12 w-12 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+            <Check className="h-6 w-6" />
+          </div>
+          <h2 id="booking-confirmation-title" className="text-xl font-bold text-slate-950">
+            {title}
+          </h2>
+          <p className="mt-3 text-sm font-medium leading-6 text-slate-600">
+            {message}
+          </p>
+        </div>
+
+        <div className="mt-6 flex justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-brand-500 px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-brand-100 transition-all hover:bg-brand-600 hover:shadow"
+          >
+            {confirmText}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const getStoredLanguage = (): 'th' | 'en' => {
   try {
     const saved = localStorage.getItem('smartroom_lang');
@@ -48,6 +170,12 @@ const getStoredLanguage = (): 'th' | 'en' => {
   } catch (e) {
     return 'th';
   }
+};
+
+const parseFirestoreDate = (value: any): Date | undefined => {
+  if (!value) return undefined;
+  const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
+  return Number.isNaN(date.getTime()) ? undefined : date;
 };
 
 const SmartRoomApplication: React.FC = () => {
@@ -214,6 +342,25 @@ const SmartRoomApplication: React.FC = () => {
     onConfirm: () => {},
   });
 
+  const [bookingConfirmationModal, setBookingConfirmationModal] = useState<{
+    isOpen: boolean;
+    message: string;
+  }>({
+    isOpen: false,
+    message: '',
+  });
+
+  const showBookingConfirmationModal = (startTime: Date, emailStatus?: 'queued' | 'sent') => {
+    setBookingConfirmationModal({
+      isOpen: true,
+      message: getBookingConfirmationMessage(startTime, language, emailStatus),
+    });
+  };
+
+  const closeBookingConfirmationModal = () => {
+    setBookingConfirmationModal(prev => ({ ...prev, isOpen: false }));
+  };
+
   // --- TOAST NOTIFICATION STATE ---
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' | 'info'; isOpen: boolean }>({
     message: '',
@@ -365,13 +512,12 @@ const SmartRoomApplication: React.FC = () => {
           const end = (data.endTime && typeof data.endTime.toDate === 'function')
             ? data.endTime.toDate()
             : new Date(data.endTime);
-          
-          const actualStart = (data.actualStartTime && typeof data.actualStartTime.toDate === 'function')
-            ? data.actualStartTime.toDate()
-            : (data.actualStartTime ? new Date(data.actualStartTime) : undefined);
-          const actualEnd = (data.actualEndTime && typeof data.actualEndTime.toDate === 'function')
-            ? data.actualEndTime.toDate()
-            : (data.actualEndTime ? new Date(data.actualEndTime) : undefined);
+
+          const actualStart = parseFirestoreDate(data.actualStartTime);
+          const actualEnd = parseFirestoreDate(data.actualEndTime);
+          const verificationEmailScheduledAt = parseFirestoreDate(data.verificationEmailScheduledAt);
+          const verificationWindowOpenedAt = parseFirestoreDate(data.verificationWindowOpenedAt);
+          const verificationWindowClosedAt = parseFirestoreDate(data.verificationWindowClosedAt);
 
           loadedBookings.push({
             ...data,
@@ -379,7 +525,10 @@ const SmartRoomApplication: React.FC = () => {
             startTime: start,
             endTime: end,
             actualStartTime: actualStart,
-            actualEndTime: actualEnd
+            actualEndTime: actualEnd,
+            verificationEmailScheduledAt,
+            verificationWindowOpenedAt,
+            verificationWindowClosedAt
           } as Booking);
         });
         setBookings(loadedBookings);
@@ -393,8 +542,11 @@ const SmartRoomApplication: React.FC = () => {
           ...b,
           startTime: b.startTime ? new Date(b.startTime) : new Date(),
           endTime: b.endTime ? new Date(b.endTime) : new Date(),
-          actualStartTime: b.actualStartTime ? new Date(b.actualStartTime) : undefined,
-          actualEndTime: b.actualEndTime ? new Date(b.actualEndTime) : undefined,
+          actualStartTime: parseFirestoreDate(b.actualStartTime),
+          actualEndTime: parseFirestoreDate(b.actualEndTime),
+          verificationEmailScheduledAt: parseFirestoreDate((b as any).verificationEmailScheduledAt),
+          verificationWindowOpenedAt: parseFirestoreDate((b as any).verificationWindowOpenedAt),
+          verificationWindowClosedAt: parseFirestoreDate((b as any).verificationWindowClosedAt),
         } as Booking));
         setBookings(fallbackBookings);
       }
@@ -719,20 +871,11 @@ const SmartRoomApplication: React.FC = () => {
     };
   };
 
-  const saveMaintenanceHistoryForRoom = async (room: Room) => {
-    const record = buildMaintenanceHistoryRecord(room);
-    if (!record) return;
-
+  const upsertMaintenanceHistoryRecord = (record: RoomMaintenanceRecord) => {
     setMaintenanceHistory(prev => {
       const withoutExisting = prev.filter(item => item.id !== record.id);
       return [...withoutExisting, record];
     });
-
-    try {
-      await setDoc(doc(db, 'roomMaintenanceHistory', record.id), record);
-    } catch (e) {
-      console.warn("Failed to persist room maintenance history; current room status was still saved:", e);
-    }
   };
 
   const withRoomMaintenanceHistory = (room: Room, record: RoomMaintenanceRecord | null): Room => {
@@ -747,15 +890,67 @@ const SmartRoomApplication: React.FC = () => {
     };
   };
 
+  const getAdminSessionPayload = () => {
+    if (!adminUser) {
+      throw new Error(language === 'th' ? 'กรุณาเข้าสู่ระบบแอดมินอีกครั้ง' : 'Please sign in as Admin again.');
+    }
+
+    return {
+      id: adminUser.id,
+      firestoreDocId: (adminUser as any).firestoreDocId || adminUser.id,
+      username: adminUser.username,
+      password: adminUser.password || '',
+      role: adminUser.role
+    };
+  };
+
+  const serializeMaintenanceRecord = (record: RoomMaintenanceRecord | null) => {
+    if (!record) return null;
+    return {
+      id: record.id,
+      roomId: record.roomId,
+      roomName: record.roomName,
+      reason: record.reason,
+      startDate: record.startDate,
+      endDate: record.endDate,
+      startTime: record.startTime,
+      endTime: record.endTime
+    };
+  };
+
+  const saveRoomAsAdmin = async (room: Room, maintenanceRecord: RoomMaintenanceRecord | null) => {
+    const saveRoom = httpsCallable(functions, 'saveRoomAsAdmin');
+    await saveRoom({
+      admin: getAdminSessionPayload(),
+      room: {
+        id: room.id,
+        name: room.name,
+        type: room.type,
+        capacity: room.capacity,
+        amenities: room.amenities,
+        imageUrl: room.imageUrl,
+        isClosed: room.isClosed || false,
+        closureReason: room.closureReason || '',
+        closureStartDate: room.closureStartDate || '',
+        closureEndDate: room.closureEndDate || '',
+        closureStartTime: room.closureStartTime ?? BOOKING_START_HOUR,
+        closureEndTime: room.closureEndTime ?? BOOKING_END_HOUR
+      },
+      maintenanceRecord: serializeMaintenanceRecord(maintenanceRecord)
+    });
+  };
+
   const handleAddRoom = async (newRoom: Room) => {
     const historyRecord = buildMaintenanceHistoryRecord(newRoom);
     const roomToSave = withRoomMaintenanceHistory(newRoom, historyRecord);
     try {
-      await setDoc(doc(db, 'rooms', roomToSave.id), roomToSave);
+      await saveRoomAsAdmin(roomToSave, historyRecord);
+      if (historyRecord) {
+        upsertMaintenanceHistoryRecord(historyRecord);
+      }
     } catch (e) {
       handleFirestoreError(e, OperationType.CREATE, `rooms/${roomToSave.id}`);
     }
-    await saveMaintenanceHistoryForRoom(roomToSave);
   };
 
   const handleUpdateRoom = async (updatedRoom: Room) => {
@@ -770,18 +965,12 @@ const SmartRoomApplication: React.FC = () => {
         : null;
     const roomToSave = withRoomMaintenanceHistory(updatedRoom, closingRecord);
     try {
-      await setDoc(doc(db, 'rooms', roomToSave.id), roomToSave);
+      await saveRoomAsAdmin(roomToSave, closingRecord);
+      if (closingRecord) {
+        upsertMaintenanceHistoryRecord(closingRecord);
+      }
     } catch (e) {
       handleFirestoreError(e, OperationType.UPDATE, `rooms/${roomToSave.id}`);
-    }
-
-    if (roomToSave.isClosed) {
-      await saveMaintenanceHistoryForRoom(roomToSave);
-    } else if (closingRecord && previousRoom) {
-      await saveMaintenanceHistoryForRoom(withRoomMaintenanceHistory({
-        ...previousRoom,
-        closureEndDate: previousRoom.closureEndDate || getLocalDateString(new Date())
-      }, closingRecord));
     }
   };
 
@@ -811,15 +1000,24 @@ const SmartRoomApplication: React.FC = () => {
 
   const sendVerificationEmail = async (bookingId: string, email?: string) => {
     if (!isYageoEmail(email)) {
-      return;
+      return null;
     }
 
     const sendEmail = httpsCallable(functions, 'sendBookingVerificationEmail');
-    await sendEmail({
+    const response = await sendEmail({
       bookingId,
       email: email!.trim().toLowerCase(),
       origin: window.location.origin,
     });
+    return response.data as {
+      bookingId?: string;
+      scheduledAt?: string;
+      windowStart?: string;
+      windowEnd?: string;
+      sentAt?: string;
+      verifyUrl?: string;
+      status?: 'queued' | 'sent';
+    };
   };
 
   const markBookingNoShow = async (bookingId: string) => {
@@ -864,6 +1062,21 @@ const SmartRoomApplication: React.FC = () => {
           return false;
         }
 
+        const verificationWindowStart = new Date(bookingData.startTime.getTime() - VERIFICATION_WINDOW_BEFORE_MS);
+        const verificationWindowEnd = new Date(bookingData.startTime.getTime() + VERIFICATION_WINDOW_AFTER_MS);
+        const nowForVerification = new Date();
+        const nowForVerificationMs = nowForVerification.getTime();
+        if (nowForVerificationMs > verificationWindowEnd.getTime()) {
+          showNotification(
+            language === 'th'
+              ? 'ไม่สามารถสร้างการจองนี้ได้ เนื่องจากเลยช่วงเวลายืนยันแล้ว'
+              : 'This booking cannot be created because the verification window has already passed.',
+            'error'
+          );
+          return false;
+        }
+        const isInsideVerificationWindow = nowForVerificationMs >= verificationWindowStart.getTime() && nowForVerificationMs <= verificationWindowEnd.getTime();
+
         const newBookingId = Math.random().toString(36).substr(2, 9);
 
         // Check for double-bookings
@@ -889,7 +1102,11 @@ const SmartRoomApplication: React.FC = () => {
           startTime: bookingData.startTime,
           endTime: bookingData.endTime,
           status: BookingStatus.CONFIRMED, // Automatically confirm new bookings
-          createdAt: new Date()
+          createdAt: new Date(),
+          verificationEmailStatus: isInsideVerificationWindow ? 'sending' : 'queued',
+          verificationEmailScheduledAt: verificationWindowStart,
+          verificationWindowOpenedAt: verificationWindowStart,
+          verificationWindowClosedAt: verificationWindowEnd
         };
 
         if (isYageoEmail(bookingData.email)) {
@@ -898,8 +1115,8 @@ const SmartRoomApplication: React.FC = () => {
 
         await setDoc(doc(db, 'bookings', newBookingId), newBooking);
         try {
-          await sendVerificationEmail(newBookingId, newBooking.email);
-          showNotification(t.bookingConfirmedOk, 'success');
+          const verificationInfo = await sendVerificationEmail(newBookingId, newBooking.email);
+          showBookingConfirmationModal(bookingData.startTime, verificationInfo?.status);
         } catch (emailError) {
           const emailFailure = {
             code: (emailError as any)?.code,
@@ -911,10 +1128,18 @@ const SmartRoomApplication: React.FC = () => {
             JSON.stringify(emailFailure, null, 2),
             emailError
           );
+          const isEmailSetupFailure = emailFailure.details?.missingEnv ||
+            emailFailure.details?.invalidEnv ||
+            emailFailure.details?.code === 'email-service-not-configured' ||
+            emailFailure.details?.code === 'email-service-invalid-url';
           showNotification(
-            language === 'th'
-              ? 'บันทึกการจองสำเร็จ แต่ส่งอีเมลยืนยันไม่สำเร็จ กรุณาตรวจสอบ Power Automate'
-              : `Booking saved, but the verification email could not be sent. ${emailFailure.code || 'Check Power Automate configuration.'}`,
+            isEmailSetupFailure
+              ? (language === 'th'
+                ? 'บันทึกการจองสำเร็จ แต่บริการส่งอีเมลยืนยันยังไม่ได้ตั้งค่า กรุณาติดต่อผู้ดูแลระบบ'
+                : 'Booking saved, but the verification email service is not configured. Please contact an administrator.')
+              : (language === 'th'
+                ? 'บันทึกการจองสำเร็จ แต่ส่งอีเมลยืนยันไม่สำเร็จ กรุณาติดต่อผู้ดูแลระบบ'
+                : 'Booking saved, but the verification email could not be sent. Please contact an administrator.'),
             'error'
           );
         }
@@ -999,7 +1224,8 @@ const SmartRoomApplication: React.FC = () => {
         }
         setIsModalOpen(false);
         setSelectedRoom(null);
-        showNotification(t.bookingConfirmedOk, 'success');
+        const firstSegmentStart = new Date(y, m - 1, d, sorted[0], 0);
+        showBookingConfirmationModal(firstSegmentStart);
         return true;
       }
     } catch (e) {
@@ -1090,6 +1316,15 @@ const SmartRoomApplication: React.FC = () => {
            onConfirm={confirmModal.onConfirm}
            onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
          />
+
+         <BookingConfirmationModal
+           isOpen={bookingConfirmationModal.isOpen}
+           title={language === 'th' ? 'ยืนยันการจองสำเร็จ' : 'Booking confirmed'}
+           message={bookingConfirmationModal.message}
+           confirmText={language === 'th' ? 'ยืนยัน' : 'Confirm'}
+           closeLabel={language === 'th' ? 'ปิดข้อความยืนยันการจอง' : 'Close booking confirmation'}
+           onClose={closeBookingConfirmationModal}
+         />
       </div>
     );
   }
@@ -1150,7 +1385,7 @@ const SmartRoomApplication: React.FC = () => {
                 className={`flex items-center space-x-2 text-brand-500 mb-6 transition-all ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-85 active:scale-[0.99]'}`}
             >
                 <LayoutGrid className="w-8 h-8" />
-                <span className="text-xl font-bold tracking-tight">YAGEO SmartRoom</span>
+                <span className="text-xl font-bold tracking-tight">TOKIN Smart Room</span>
             </div>
 
             {/* Language Switcher */}
@@ -1297,7 +1532,6 @@ const SmartRoomApplication: React.FC = () => {
                 language={language} 
                 onDeleteBooking={handleDeleteBooking} 
                 onConfirmBooking={handleConfirmBooking}
-                onUpdateBooking={handleUpdateBooking}
                 selectedRoomId={selectedRoomId}
                 setSelectedRoomId={setSelectedRoomId}
              />
@@ -1316,6 +1550,15 @@ const SmartRoomApplication: React.FC = () => {
         isDanger={confirmModal.isDanger}
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <BookingConfirmationModal
+        isOpen={bookingConfirmationModal.isOpen}
+        title={language === 'th' ? 'ยืนยันการจองสำเร็จ' : 'Booking confirmed'}
+        message={bookingConfirmationModal.message}
+        confirmText={language === 'th' ? 'ยืนยัน' : 'Confirm'}
+        closeLabel={language === 'th' ? 'ปิดข้อความยืนยันการจอง' : 'Close booking confirmation'}
+        onClose={closeBookingConfirmationModal}
       />
 
       {/* Booking Modal */}

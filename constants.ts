@@ -30,7 +30,7 @@ export const INITIAL_ADMIN_USERS: AdminUser[] = [
     username: 'admin',
     password: '123',
     role: 'SUPER_ADMIN',
-    name: 'YAGEO HR Admin',
+    name: 'TOKIN HR Admin',
     employeeId: 'HR001',
     department: 'HR',
     phone: '9999'
@@ -40,7 +40,7 @@ export const INITIAL_ADMIN_USERS: AdminUser[] = [
     username: 'approver',
     password: '123',
     role: 'APPROVER',
-    name: 'YAGEO Room Approver',
+    name: 'TOKIN Room Approver',
     employeeId: 'HR002',
     department: 'HR',
     phone: '8888'

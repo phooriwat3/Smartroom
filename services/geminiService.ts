@@ -42,7 +42,7 @@ export const getGeminiSuggestion = async (
   })));
 
   const systemInstruction = `
-    You are a smart office manager assistant for YAGEO SmartRoom Booking system.
+    You are a smart office manager assistant for TOKIN Smart Room Booking system.
     You help users find the best room for their meetings based on the available rooms and current schedule.
     
     Current Date: ${todayStr}

@@ -70,7 +70,10 @@ export interface Booking {
   actualEndTime?: Date;
   noShowMarkedAt?: any;
   verifiedAt?: any;
-  verificationEmailStatus?: 'queued' | 'sent' | 'failed';
+  verificationEmailStatus?: 'queued' | 'sending' | 'sent' | 'failed';
+  verificationEmailScheduledAt?: Date;
+  verificationWindowOpenedAt?: Date;
+  verificationWindowClosedAt?: Date;
   verificationEmailFailedAt?: any;
   verifyUrl?: string;
 }

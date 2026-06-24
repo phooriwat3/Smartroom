@@ -1023,13 +1023,13 @@ const Dashboard: React.FC<DashboardProps> = ({
           {allRoomsSubView === 'matrix' && (
             <div className="bg-white rounded-xl shadow-sm border border-cyan-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div ref={timelineGridScrollRef} className="overflow-x-auto border-b border-cyan-100">
-                <table className="w-full text-sm border-collapse">
+                <table className="w-full text-sm border-collapse timeline-grid-table">
                   <thead>
                     <tr className="bg-gradient-to-r from-cyan-50 via-sky-50 to-blue-50 border-b border-cyan-100">
                       <th className="px-4 py-4 text-left font-bold text-sky-900 w-44 sticky left-0 bg-cyan-50 z-10 shadow-sm md:shadow-none border-r border-cyan-100">{language === 'th' ? 'ห้อง' : 'Type of Room'}</th>
                       <th className="px-3 py-4 text-left font-bold text-sky-800 w-36 border-r border-cyan-100 bg-sky-50">{language === 'th' ? 'รายการ' : 'Description'}</th>
                       {hours.map(h => (
-                        <th key={h} className="px-2 py-3 text-center font-mono text-xs text-sky-700 min-w-[140px] font-bold">
+                        <th key={h} className="px-2 py-3 text-center font-mono text-xs text-sky-700 font-bold timeline-grid-slot">
                           {formatTimeValue(h, language)}
                         </th>
                       ))}
@@ -1082,7 +1082,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             {/* Hour Cells for Row 1 */}
                             {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
                               return (
-                                <td key={hour} className="px-1.5 py-1.5 relative h-16 border-r border-cyan-50 min-w-[160px]">
+                                <td key={hour} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
                                   <div className={`w-full h-full rounded-md flex items-center justify-center text-[11px] transition-all border px-2.5 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                                       ${status === 'occupied'
                                       ? isNoCheckInStatus
@@ -1144,7 +1144,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             {/* Hour Cells for Row 2 */}
                             {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
                               return (
-                                <td key={hour} className="px-1.5 py-1.5 relative h-12 border-r border-cyan-50 min-w-[160px]">
+                                <td key={hour} className="px-1.5 py-1.5 relative h-16 border-r border-cyan-50 timeline-grid-slot">
                                   <div className={`w-full h-full rounded-md flex items-center justify-center text-[10.5px] transition-all border px-2.5 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                                       ${status === 'occupied'
                                       ? isNoCheckInStatus
@@ -1241,7 +1241,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     <div className="w-20 text-right text-xs font-mono text-slate-400 pr-4 py-4 font-bold flex-shrink-0 flex items-center justify-end">
                       {formatTimeValue(hour, language)}
                     </div>
-                    <div className="flex-grow relative min-h-[68px]">
+                    <div className="flex-grow relative min-h-[88px]">
                       <div
                         onClick={() => {
                           if (!isPast && !isClosedHour && status !== 'occupied') {

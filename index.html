@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YAGEO SmartRoom</title>
+    <title>TOKIN Smart Room</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
@@ -108,6 +108,28 @@
       .booking-it-neon > * {
         position: relative;
         z-index: 1;
+      }
+      .timeline-grid-scroll {
+        overscroll-behavior-x: contain;
+        scroll-behavior: auto;
+        scrollbar-gutter: stable;
+        -webkit-overflow-scrolling: touch;
+        contain: layout paint;
+      }
+      .timeline-grid-table {
+        table-layout: fixed;
+      }
+      .timeline-grid-slot {
+        width: 300px;
+        min-width: 300px;
+      }
+      .timeline-grid-sticky {
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        contain: paint;
+      }
+      .timeline-grid-cell {
+        contain: layout paint;
       }
       @media (prefers-reduced-motion: reduce) {
         .booking-it-neon,

@@ -41,6 +41,8 @@ interface AdminPanelProps {
   onLoginSuccess?: () => void;
 }
 
+type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected';
+
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   rooms, 
   bookings, 
@@ -617,6 +619,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
 
+  const getAdminBookingDisplayState = (booking: Booking): AdminBookingDisplayState => {
+    if (booking.status === BookingStatus.PENDING) return 'pending';
+    if (booking.status === BookingStatus.REJECTED || !booking.status) return 'rejected';
+    if (booking.actualEndTime) return 'used';
+
+    const now = new Date().getTime();
+    const startTime = booking.startTime.getTime();
+    const endTime = booking.endTime.getTime();
+    const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
+
+    if (hasVerifiedOrStarted) {
+      if (now > endTime) return 'used';
+      if (now >= startTime && now <= endTime) return 'roomInUse';
+      return 'verified';
+    }
+
+    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
+    return 'confirmed';
+  };
+
+  const getAdminBookingStatusLabel = (booking: Booking) => {
+    const state = getAdminBookingDisplayState(booking);
+    if (state === 'pending') return t.pendingApproval;
+    if (state === 'waitForVerify') return t.waitForVerify;
+    if (state === 'verified') return t.verified;
+    if (state === 'roomInUse') return t.roomInUseStatus;
+    if (state === 'used') return t.usedRoomStatus;
+    if (state === 'rejected') return t.rejected;
+    return t.confirmed;
+  };
+
+  const getAdminBookingStatusClass = (state: AdminBookingDisplayState) => {
+    if (state === 'pending') return 'bg-orange-100 text-orange-700';
+    if (state === 'waitForVerify') return 'bg-violet-100 text-violet-700';
+    if (state === 'verified') return 'bg-blue-100 text-blue-700';
+    if (state === 'roomInUse') return 'bg-blue-100 text-blue-700 ring-1 ring-blue-200';
+    if (state === 'used') return 'bg-slate-100 text-slate-600';
+    if (state === 'rejected') return 'bg-red-100 text-red-700';
+    return 'bg-green-100 text-green-700';
+  };
+
   const getRoomTypeLabel = (type: string) => {
     if (type === 'Meeting') return t.meetingRoom;
     if (type === 'Reception') return t.receptionArea;
@@ -970,7 +1013,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </td>
                         </tr>
                     ) : (
-                        filteredBookings.map((booking) => (
+                        filteredBookings.map((booking) => {
+                            const displayState = getAdminBookingDisplayState(booking);
+                            return (
                         <tr key={booking.id} className="hover:bg-slate-50 transition-colors">
                             <td className="px-6 py-4">
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">
@@ -1011,26 +1056,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                             </td>
                             <td className="px-6 py-4 mr-0">
-                                {booking.status === BookingStatus.PENDING && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-                                        {t.pendingApproval}
-                                    </span>
-                                )}
-                                {booking.status === BookingStatus.CONFIRMED && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                                        {t.confirmed}
-                                    </span>
-                                )}
-                                {booking.status === BookingStatus.VERIFIED && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                                        {t.verified}
-                                    </span>
-                                )}
-                                {(booking.status === BookingStatus.REJECTED || !booking.status) && booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.VERIFIED && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                                        {t.rejected}
-                                    </span>
-                                )}
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState)}`}>
+                                    {getAdminBookingStatusLabel(booking)}
+                                </span>
                             </td>
                             <td className="px-6 py-4 text-right">
                                 <div className="flex items-center justify-end space-x-2">
@@ -1063,7 +1091,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                             </td>
                         </tr>
-                        ))
+                            );
+                        })
                     )}
                     </tbody>
                 </table>

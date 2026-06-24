@@ -80,8 +80,8 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                   </h4>
                   <p className="text-xs text-brand-700 font-medium mt-1">
                     {language === 'th'
-                      ? 'ระบบจองห้อง YAGEO SmartRoom แสดงสถานะห้องและรายการใช้งานจริง เพื่อความสะดวกและเรียลไทม์ที่สุด'
-                      : 'YAGEO SmartRoom shows real-time room occupancies and reservation matrices to simplify workspace coordination.'}
+                      ? 'ระบบจองห้อง TOKIN Smart Room แสดงสถานะห้องและรายการใช้งานจริง เพื่อความสะดวกและเรียลไทม์ที่สุด'
+                      : 'TOKIN Smart Room shows real-time room occupancies and reservation matrices to simplify workspace coordination.'}
                   </p>
                 </div>
               </div>
