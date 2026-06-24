@@ -261,6 +261,49 @@ const Dashboard: React.FC<DashboardProps> = ({
     return liveTime > cutoffTime;
   };
 
+  type BookingDisplayState = 'noCheckIn' | 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed';
+
+  const getBookingDisplayState = (booking: Booking): BookingDisplayState => {
+    if (isNoCheckIn(booking)) return 'noCheckIn';
+    if (booking.status === BookingStatus.PENDING) return 'pending';
+    if (booking.actualEndTime) return 'used';
+
+    const nowTime = liveTime.getTime();
+    const startTime = booking.startTime.getTime();
+    const endTime = booking.endTime.getTime();
+    const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
+
+    if (hasVerifiedOrStarted) {
+      if (nowTime > endTime) return 'used';
+      if (nowTime >= startTime && nowTime <= endTime) return 'roomInUse';
+      return 'verified';
+    }
+
+    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
+    return 'confirmed';
+  };
+
+  const getBookingDisplayLabel = (booking: Booking) => {
+    const state = getBookingDisplayState(booking);
+    if (state === 'noCheckIn') return t.cancelledNoVerification;
+    if (state === 'pending') return t.pendingApproval;
+    if (state === 'waitForVerify') return t.waitForVerify;
+    if (state === 'verified') return t.verified;
+    if (state === 'roomInUse') return t.roomInUseStatus;
+    if (state === 'used') return t.usedRoomStatus;
+    return t.confirmed;
+  };
+
+  const getBookingStatusBadgeClass = (state: BookingDisplayState) => {
+    if (state === 'noCheckIn') return 'bg-rose-100 text-rose-800 border-rose-200';
+    if (state === 'pending') return 'bg-orange-100 text-orange-800 border-orange-200';
+    if (state === 'waitForVerify') return 'bg-amber-100 text-amber-900 border-amber-200';
+    if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border-cyan-200';
+    if (state === 'roomInUse') return 'bg-sky-100 text-sky-900 border-sky-200 animate-pulse';
+    if (state === 'used') return 'bg-slate-100 text-slate-600 border-slate-205';
+    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+  };
+
   // Helper inside All-Room cards stats calculation
   const getAllBookingsForDate = useMemo(() => {
     return bookings.filter(b => {
@@ -1083,7 +1126,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             {row1Cells.map(({ hour, status, booking, isPast, isPending, isNoCheckInStatus, isClosedHour, closureCheck }) => {
                               return (
                                 <td key={hour} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                  <div className={`w-full h-full rounded-md flex items-center justify-center text-[11px] transition-all border px-2.5 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
+                                  <div className={`w-full h-full rounded-md flex ${status === 'occupied' && booking ? 'flex-col justify-center py-1 text-left' : 'items-center justify-center text-[11px]'} transition-all border px-2.5 font-semibold ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
                                       ${status === 'occupied'
                                       ? isNoCheckInStatus
                                         ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
@@ -1109,15 +1152,22 @@ const Dashboard: React.FC<DashboardProps> = ({
                                     }
                                   >
                                     {status === 'occupied' && booking ? (
-                                      <div className="w-full text-center">
-                                        <div className="font-bold text-[11.5px] leading-tight">
-                                          {isNoCheckInStatus ? (
-                                            language === 'th' ? 'ไม่มา Check-in' : 'No Check-in'
-                                          ) : booking.organizer}
+                                      <div className="w-full text-left flex flex-col gap-0.5 leading-normal">
+                                        <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold self-start border ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
+                                          {getBookingDisplayLabel(booking)}
+                                        </span>
+                                        <div className="truncate text-[10px] text-slate-805">
+                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'ชื่อ: ' : 'name: '}</span>
+                                          {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
                                         </div>
-                                        {!isNoCheckInStatus && booking.deskNumber && (
-                                          <div className="text-[9.5px] mt-0.5 px-1.5 bg-white/65 text-slate-700 rounded-sm font-semibold inline-block">{booking.deskNumber}</div>
-                                        )}
+                                        <div className="truncate text-[10px] text-slate-650">
+                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'แผนก: ' : 'dept: '}</span>
+                                          {booking.department || '-'}
+                                        </div>
+                                        <div className="truncate text-[10px] text-slate-650">
+                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'โต๊ะ: ' : 'desk: '}</span>
+                                          {booking.deskNumber || '-'}
+                                        </div>
                                       </div>
                                     ) : isClosedHour ? (
                                       <span className="block w-full truncate text-center text-[9px] font-bold text-slate-700">
