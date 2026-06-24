@@ -1211,7 +1211,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
           {/* Left Col: Timeline Visual */}
           <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-cyan-100 p-6 overflow-x-auto text-slate-800">
-            <div className="flex items-center justify-between mb-6 min-w-[600px]">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-6 gap-y-3 max-w-[500px]">
               <h3 className="font-bold text-slate-850 flex items-center">
                 <Clock className="w-5 h-5 mr-2 text-cyan-500" />
                 {t.timelineGrid} ({formatDate(selectedDateObj, language, { weekday: 'short', month: 'short', day: 'numeric' })})
@@ -1225,7 +1225,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </div>
             </div>
 
-            <div className="space-y-1.5 min-w-[600px]">
+            <div className="space-y-1.5 max-w-[500px]">
               {hours.map(hour => {
                 const { status, booking } = getSingleRoomSlotStatus(hour);
                 const closureCheck = getMaintenanceAt(selectedRoom, dateStr, hour);
@@ -1523,16 +1523,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                               </span>
                             )}
                           </div>
-
-                          {canCheckIn(b) && (
-                            <button
-                              type="button"
-                              onClick={() => setCheckInBooking(b)}
-                              className="rounded-lg bg-emerald-500 px-2.5 py-1.5 text-[10px] font-bold text-white shadow-sm transition-colors hover:bg-emerald-600"
-                            >
-                              {language === 'th' ? 'Check-in' : 'Check in'}
-                            </button>
-                          )}
                         </div>
                       </div>
                     );
