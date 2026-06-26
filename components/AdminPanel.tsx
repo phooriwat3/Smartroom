@@ -110,7 +110,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   }, []);
   
   // UI State
-  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('bookings');
+  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('analytics');
   
   const sortedRooms = useMemo(() => {
     const order: Record<string, number> = {
@@ -141,6 +141,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onConfirm: () => {},
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [historyFilterMode, setHistoryFilterMode] = useState<'all' | 'day' | 'week' | 'month' | 'year'>('all');
+  const [historyFilterDate, setHistoryFilterDate] = useState(() => {
+    const today = new Date();
+    const year = today.getFullYear();
+    const month = String(today.getMonth() + 1).padStart(2, '0');
+    const day = String(today.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  });
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [bookingEditForm, setBookingEditForm] = useState({
     roomId: '',
@@ -186,7 +194,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     updateCurrentUser(user);
     setLoginErrorKey('');
     if (user.role === 'APPROVER') {
-      setActiveTab('bookings');
+      setActiveTab('analytics');
     }
     onLoginSuccess?.();
   };
@@ -530,6 +538,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return `${year}-${month}-${day}`;
   };
 
+  const formatDateInputDisplay = (value?: string) => {
+    if (!value) return '';
+    const [year, month, day] = value.split('-');
+    if (!year || !month || !day) return value;
+    return `${month}/${day}/${year}`;
+  };
+
   const isSameDay = (date: Date, compareDate: Date) => (
     date.getDate() === compareDate.getDate() &&
     date.getMonth() === compareDate.getMonth() &&
@@ -627,9 +642,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     .filter(bookingMatchesSearch)
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
+  const selectedHistoryDate = historyFilterDate ? new Date(`${historyFilterDate}T00:00:00`) : new Date();
+  const weekStartsOnSunday = (date: Date) => {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+    return start;
+  };
+
+  const bookingMatchesHistoryDateFilter = (booking: Booking) => {
+    if (historyFilterMode === 'all') return true;
+    if (!historyFilterDate || Number.isNaN(selectedHistoryDate.getTime())) return false;
+    const bookingDate = booking.startTime;
+    if (historyFilterMode === 'day') return isSameDay(bookingDate, selectedHistoryDate);
+    if (historyFilterMode === 'month') return bookingDate.getMonth() === selectedHistoryDate.getMonth() && bookingDate.getFullYear() === selectedHistoryDate.getFullYear();
+    if (historyFilterMode === 'year') return bookingDate.getFullYear() === selectedHistoryDate.getFullYear();
+
+    const weekStart = weekStartsOnSunday(selectedHistoryDate);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekStart.getDate() + 7);
+    return bookingDate >= weekStart && bookingDate < weekEnd;
+  };
+
+  const getBookingHistorySortBucket = (booking: Booking) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bookingDay = new Date(booking.startTime);
+    bookingDay.setHours(0, 0, 0, 0);
+    if (bookingDay.getTime() === today.getTime()) return 0;
+    if (bookingDay.getTime() > today.getTime()) return 1;
+    return 2;
+  };
+
   const bookingHistory = bookings
     .filter(bookingMatchesSearch)
-    .sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+    .filter(bookingMatchesHistoryDateFilter)
+    .sort((a, b) => {
+      const bucketDiff = getBookingHistorySortBucket(a) - getBookingHistorySortBucket(b);
+      if (bucketDiff !== 0) return bucketDiff;
+      const bucket = getBookingHistorySortBucket(a);
+      return bucket === 2 ? b.startTime.getTime() - a.startTime.getTime() : a.startTime.getTime() - b.startTime.getTime();
+    });
 
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
 
@@ -963,14 +1016,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Tabs */}
       <div className="flex space-x-1 bg-white p-1 rounded-xl border border-slate-200 w-fit overflow-x-auto">
         <button
-            onClick={() => setActiveTab('bookings')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'bookings' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-            {t.bookingsTab}
-
-        </button>
-
-        <button
             onClick={() => setActiveTab('analytics')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'analytics' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
         >
@@ -1184,13 +1229,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  </h2>
                  <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'th' ? 'สถิติการจองทั้งหมดและประวัติย้อนหลัง' : 'Overall booking analytics and historical booking data'}</p>
               </div>
-              <button
-                 type="button"
-                 onClick={() => setActiveTab('bookings')}
-                 className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
-              >
-                 {language === 'th' ? 'กลับไปดูรายการวันนี้' : 'Back to Today Bookings'}
-              </button>
            </div>
 
            {/* Metrics Stats Grid */}
@@ -1323,20 +1361,52 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
            </div>
 
            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
-              <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                 <div>
-                    <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{language === 'th' ? 'ประวัติการจอง' : 'Booking History'}</h4>
-                    <p className="text-xs text-slate-400 mt-1 font-semibold">{language === 'th' ? 'ข้อมูลการจองย้อนหลังทั้งหมด' : 'Historical booking records across all rooms'}</p>
+              <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
+                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div>
+                       <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{language === 'th' ? 'ประวัติการจอง' : 'Booking History'}</h4>
+                       <p className="text-xs text-slate-400 mt-1 font-semibold">{language === 'th' ? 'วันนี้ก่อน ตามด้วยอนาคต และย้อนหลังจากใหม่ไปเก่า' : 'Today first, then future bookings, then past bookings newest to oldest'}</p>
+                    </div>
+                    <div className="relative w-full sm:w-72">
+                       <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                       <input
+                          type="text"
+                          placeholder={t.searchPlaceholder}
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
+                       />
+                    </div>
                  </div>
-                 <div className="relative w-full sm:w-72">
-                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                    <input
-                       type="text"
-                       placeholder={t.searchPlaceholder}
-                       value={searchTerm}
-                       onChange={(e) => setSearchTerm(e.target.value)}
-                       className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
-                    />
+                 <div className="grid grid-cols-1 sm:grid-cols-[180px_220px_auto] gap-2 items-end">
+                    <div>
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</label>
+                       <select
+                          value={historyFilterMode}
+                          onChange={(e) => setHistoryFilterMode(e.target.value as 'all' | 'day' | 'week' | 'month' | 'year')}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                       >
+                          <option value="all">{language === 'th' ? 'ทั้งหมด' : 'All'}</option>
+                          <option value="day">{language === 'th' ? 'รายวัน' : 'Specific day'}</option>
+                          <option value="week">{language === 'th' ? 'รายสัปดาห์' : 'Week'}</option>
+                          <option value="month">{language === 'th' ? 'รายเดือน' : 'Month'}</option>
+                          <option value="year">{language === 'th' ? 'รายปี' : 'Year'}</option>
+                       </select>
+                    </div>
+                    <div>
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'วันที่อ้างอิง' : 'Reference date'}</label>
+                       <input
+                          type="date"
+                          lang="en-US"
+                          value={historyFilterDate}
+                          onChange={(e) => setHistoryFilterDate(e.target.value)}
+                          disabled={historyFilterMode === 'all'}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-100 disabled:text-slate-400"
+                       />
+                    </div>
+                    <div className="text-xs font-bold text-slate-500 pb-2">
+                       {historyFilterMode === 'all' ? (language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates') : (formatDateInputDisplay(historyFilterDate) || '-')}
+                    </div>
                  </div>
               </div>
               <div className="overflow-x-auto max-h-[520px]">
@@ -1348,12 +1418,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           <th className="px-5 py-3">{t.eventCol}</th>
                           <th className="px-5 py-3">{t.userCol}</th>
                           <th className="px-5 py-3">{t.status}</th>
+                          <th className="px-5 py-3 text-right">{t.actionsCol}</th>
                        </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-medium">
                        {bookingHistory.length === 0 ? (
                           <tr>
-                             <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">{t.noBookingsTable}</td>
+                             <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">{t.noBookingsTable}</td>
                           </tr>
                        ) : bookingHistory.map(booking => {
                           const displayState = getAdminBookingDisplayState(booking);
@@ -1373,6 +1444,26 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </td>
                                 <td className="px-5 py-3">
                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                                </td>
+                                <td className="px-5 py-3 text-right">
+                                   <div className="flex items-center justify-end space-x-2">
+                                      {onUpdateBooking && (
+                                         <button
+                                            onClick={() => openEditBookingModal(booking)}
+                                            className="text-slate-400 hover:text-brand-600 hover:bg-brand-50 p-2 rounded-lg transition-all"
+                                            title={t.edit}
+                                         >
+                                            <Edit className="w-4 h-4" />
+                                         </button>
+                                      )}
+                                      <button
+                                         onClick={() => onDeleteBooking(booking.id)}
+                                         className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
+                                         title={t.deleteButton}
+                                      >
+                                         <Trash2 className="w-4 h-4" />
+                                      </button>
+                                   </div>
                                 </td>
                              </tr>
                           );
@@ -1561,7 +1652,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 )}
                                                 {(room.closureStartDate || room.closureStartTime !== undefined) && (
                                                     <span className="text-[9px] text-slate-500 font-semibold font-mono mt-0.5">
-                                                        {room.closureStartDate && `${room.closureStartDate}`}
+                                                        {room.closureStartDate && formatDateInputDisplay(room.closureStartDate)}
                                                         {room.closureStartTime !== undefined && ` [${String(room.closureStartTime).padStart(2, '0')}:00-${String(room.closureEndTime || 24).padStart(2, '0')}:00]`}
                                                     </span>
                                                 )}
@@ -1768,10 +1859,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <input
                       required
                       type="date"
+                      lang="en-US"
                       value={bookingEditForm.date}
                       onChange={(e) => setBookingEditForm({ ...bookingEditForm, date: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
                     />
+                    {bookingEditForm.date && (
+                      <p className="mt-1 text-[11px] font-bold text-slate-500">{formatDateInputDisplay(bookingEditForm.date)}</p>
+                    )}
                   </div>
                   <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'เวลาเริ่ม' : 'Start Time'}</label>
@@ -1990,6 +2085,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureSelectedDateLabel}</label>
                                     <input
                                         type="date"
+                                        lang="en-US"
                                         value={roomForm.closureStartDate || ''}
                                         onChange={(e) => setRoomForm({
                                             ...roomForm,
@@ -1998,6 +2094,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         })}
                                         className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
                                     />
+                                    {roomForm.closureStartDate && (
+                                        <p className="mt-1 text-[11px] font-bold text-slate-500">{formatDateInputDisplay(roomForm.closureStartDate)}</p>
+                                    )}
                                     <p className="mt-1 text-[11px] font-semibold text-slate-500">{t.selectDisableDateFirst}</p>
                                 </div>
 

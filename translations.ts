@@ -227,8 +227,8 @@ export const TRANSLATIONS = {
     customClosureReasonPlaceholder: "Please specify your custom reason...",
     customRenovationReason: "Custom Renovation",
     closureDateRangeLabel: "Closure Date Range (Optional)",
-    closureStartDateLabel: "Start Date (DD/MM/YYYY)",
-    closureEndDateLabel: "End Date (DD/MM/YYYY)",
+    closureStartDateLabel: "Start Date (MM/DD/YYYY)",
+    closureEndDateLabel: "End Date (MM/DD/YYYY)",
     closureTimeRangeLabel: "Closure Time Range (Optional)",
     closureStartTimeLabel: "Start Hour",
     closureEndTimeLabel: "End Hour",
@@ -260,19 +260,19 @@ export const TRANSLATIONS = {
     userGuideTitle: "TOKIN Smart Room User Guide & Manual",
     close: "Close",
     ruleEligibleTitle: "1. Eligible Users",
-    ruleEligibleDesc: "All TOKIN employees and authorized office personnel are eligible to use the room booking service.",
-    ruleSystemOnlyTitle: "2. Official Booking Only",
-    ruleSystemOnlyDesc: "Room reservations must be done exclusively via the official TOKIN Smart Room digital booking platform.",
-    ruleLateTitle: "3. 15-Minute Cancellation Policy",
-    ruleLateDesc: "If the keys/room are not picked up within 15 minutes of the scheduled start time, the booking system will automatically cancel the reservation for all consecutive hours.",
-    ruleCapacityTitle: "4. Capacity Limit Enforcement",
-    ruleCapacityDesc: "Reservations must specify the exact number of attendees, keeping within the designated capacity of each room.",
-    ruleFoodTitle: "5. Food & Drink Policy",
-    ruleFoodDesc: "Strictly no food, snacks, or outside eats inside the rooms. Only drinks in sealed containers with lids are allowed.",
-    ruleFurnitureTitle: "6. Care & Responsibility",
-    ruleFurnitureDesc: "Do not move or rearrange any furniture. Users are fully liable and responsible for any damaged equipment or property.",
-    ruleClosingTitle: "7. Departure Checklist",
-    ruleClosingDesc: "Before leaving: turn off the AC, turn off all lights, unplug electrical sockets and the TV power cord. Lock the room and return all keys/equipment to the Information Counter."
+    ruleEligibleDesc: "TOKIN employees and authorized office personnel may book rooms using their own name, employee ID, department, desk number, and YAGEO email.",
+    ruleSystemOnlyTitle: "2. Official Booking and Date Format",
+    ruleSystemOnlyDesc: "All reservations must be created in TOKIN Smart Room. Dates are shown as MM/DD/YYYY, times use the room schedule from 7:00 AM to 7:00 PM, and bookings must not overlap existing reservations or temporary disabled periods.",
+    ruleLateTitle: "3. Verification Email and 15-Minute Check-in Window",
+    ruleLateDesc: "After booking, the system sends or schedules a verification email. The link can be used from 15 minutes before until 15 minutes after the booking start time. If the booking is not verified/check-in within that window, the system may release the room and mark the booking as cancelled/no verification.",
+    ruleCapacityTitle: "4. Capacity and Correct Booking Details",
+    ruleCapacityDesc: "Users must choose a suitable room, stay within room capacity, and provide accurate purpose, booker name, employee ID, department, desk phone/desk number, and email details.",
+    ruleFoodTitle: "5. Room Availability and Maintenance",
+    ruleFoodDesc: "Rooms marked as Temporarily Disabled or under maintenance cannot be booked for the disabled date/time. Admins are responsible for setting clear maintenance reasons and reopening schedules accurately.",
+    ruleFurnitureTitle: "6. User and Admin Responsibilities",
+    ruleFurnitureDesc: "Users must use the room only for the booked purpose, keep the room clean, avoid damage, and contact Admin for cancellations or changes. Admins manage approvals, booking edits/deletions, room status, maintenance periods, and booking history.",
+    ruleClosingTitle: "7. Departure and Room Care",
+    ruleClosingDesc: "Before leaving, turn off the AC and lights where appropriate, return shared equipment to its proper place, leave the room clean, and report any room or equipment issue to Admin."
   },
   th: {
     roomOverview: "ภาพรวมห้องประชุม",
@@ -499,8 +499,8 @@ export const TRANSLATIONS = {
     customClosureReasonPlaceholder: "กรุณาระบุกิจกรรม/สาเหตุของท่าน...",
     customRenovationReason: "ปรับปรุงห้อง",
     closureDateRangeLabel: "กำหนดช่วงวันที่ต้องการปิดห้อง (เสริม)",
-    closureStartDateLabel: "เริ่มปิดวันที่ (DD/MM/YYYY)",
-    closureEndDateLabel: "สิ้นสุดวันที่ปิด (DD/MM/YYYY)",
+    closureStartDateLabel: "เริ่มปิดวันที่ (MM/DD/YYYY)",
+    closureEndDateLabel: "สิ้นสุดวันที่ปิด (MM/DD/YYYY)",
     closureTimeRangeLabel: "ระบุช่วงเวลาปิดในส่วนแต่ละวัน (เสริม)",
     closureStartTimeLabel: "ตั้งแต่ชั่วโมง",
     closureEndTimeLabel: "ถึงชั่วโมง",
@@ -532,19 +532,19 @@ export const TRANSLATIONS = {
     userGuideTitle: "คู่มือการใช้งานระบบจองห้องประชุม TOKIN Smart Room",
     close: "ปิดหน้าต่าง",
     ruleEligibleTitle: "1. ผู้มีสิทธิ์ใช้บริการ",
-    ruleEligibleDesc: "พนักงานของ TOKIN ทุกคน และบุคคลที่ได้รับอนุญาตอย่างเป็นทางการจากฝ่ายบริหาร/HR เท่านั้น",
-    ruleSystemOnlyTitle: "2. การจองผ่านระบบอย่างเป็นทางการ",
-    ruleSystemOnlyDesc: "ผู้ใช้ต้องทำการจองและลงทะเบียนช่วงเวลาใช้บริการผ่านทางระบบ TOKIN Smart Room ค้นคว้านี้เท่านั้น",
-    ruleLateTitle: "3. กฎการยกเลิกภายใน 15 นาที",
-    ruleLateDesc: "หากไม่มาติดต่อรับกุญแจห้องภายในเวลา 15 นาทีตามเวลาเริ่มการจอง ระบบจะยกเลิกการจองดังกล่าวตามจำนวนชั่วโมงจองของรอบนั้นโดยอัตโนมัติทันที",
-    ruleCapacityTitle: "4. การระบุจำนวนผู้เข้าใช้งาน",
-    ruleCapacityDesc: "ผู้จองต้องระบุจำนวนผู้ร่วมเข้าใช้จริง โดยต้องไม่เกินความจุสูงสุดที่กำหนดไว้ในแต่ละห้อง",
-    ruleFoodTitle: "5. นโยบายอาหารและเครื่องดื่ม",
-    ruleFoodDesc: "ห้ามนำอาหาร ขนม ขบเคี้ยวเข้ามาในพื้นที่เด็ดขาด อนุญาตเฉพาะเครื่องดื่มที่บรรจุในภาชนะที่มีฝาปิดมิดชิดเท่านั้น",
-    ruleFurnitureTitle: "6. การดูแลรักษาความเสียหาย",
-    ruleFurnitureDesc: "ห้ามทำการเคลื่อนย้ายหรือดัดแปลงเฟอร์นิเจอร์ เครื่องใช้ และผู้ใช้ต้องรับผิดชอบค่าเสียหายทั้งหมดหากพบสิ่งของชำรุดเสียหาย",
-    ruleClosingTitle: "7. การตรวจสอบก่อนออกจากห้อง",
-    ruleClosingDesc: "ปิดเครื่องปรับอากาศ ปิดไฟ ถอดปลั๊กไฟและสายโทรทัศน์ (TV) ล็อคห้อง และดำเนินการส่งคืนกุญแจพร้อมอุปกรณ์ต่าง ๆ ณ เคาน์เตอร์ Information หลังเสร็จสิ้นการใช้งาน"
+    ruleEligibleDesc: "พนักงาน TOKIN และบุคคลที่ได้รับอนุญาตสามารถจองห้องได้ โดยต้องใช้ชื่อผู้จอง รหัสพนักงาน แผนก เบอร์โต๊ะ และอีเมล YAGEO ของตนเองให้ถูกต้อง",
+    ruleSystemOnlyTitle: "2. การจองผ่านระบบและรูปแบบวันที่",
+    ruleSystemOnlyDesc: "ต้องจองผ่านระบบ TOKIN Smart Room เท่านั้น วันที่จะแสดงในรูปแบบ MM/DD/YYYY เวลาจองอยู่ในช่วง 07:00-19:00 น. และไม่สามารถจองทับรายการเดิมหรือช่วงปิดใช้งานชั่วคราวได้",
+    ruleLateTitle: "3. อีเมลยืนยันและช่วงเวลา Check-in 15 นาที",
+    ruleLateDesc: "หลังจอง ระบบจะส่งหรือกำหนดเวลาส่งอีเมลยืนยัน ผู้ใช้สามารถกดลิงก์เพื่อ Verify/Check-in ได้ตั้งแต่ 15 นาทีก่อนเวลาเริ่มจองถึง 15 นาทีหลังเวลาเริ่มจอง หากไม่ยืนยันภายในช่วงนี้ ระบบอาจปล่อยห้องและบันทึกเป็นยกเลิก/ไม่ยืนยัน",
+    ruleCapacityTitle: "4. ความจุห้องและข้อมูลการจองที่ถูกต้อง",
+    ruleCapacityDesc: "ผู้ใช้ต้องเลือกห้องให้เหมาะสมกับจำนวนผู้ใช้งานและกรอกวัตถุประสงค์ ชื่อผู้จอง รหัสพนักงาน แผนก เบอร์โต๊ะ และอีเมลให้ถูกต้อง",
+    ruleFoodTitle: "5. สถานะห้องและการปิดใช้งานชั่วคราว",
+    ruleFoodDesc: "ห้องที่แสดงสถานะปิดใช้งานชั่วคราวหรืออยู่ระหว่างซ่อมบำรุง จะไม่สามารถจองในวันและเวลาที่ปิดได้ ผู้ดูแลระบบต้องระบุเหตุผลและช่วงเวลาปิดใช้งานให้ชัดเจน",
+    ruleFurnitureTitle: "6. ความรับผิดชอบของผู้ใช้และผู้ดูแลระบบ",
+    ruleFurnitureDesc: "ผู้ใช้ต้องใช้ห้องตามวัตถุประสงค์ที่จอง ดูแลความสะอาด ไม่ทำให้อุปกรณ์เสียหาย และติดต่อ Admin หากต้องการยกเลิกหรือแก้ไขรายการจอง ส่วน Admin รับผิดชอบการอนุมัติ แก้ไข/ลบรายการจอง สถานะห้อง และประวัติการจอง",
+    ruleClosingTitle: "7. การดูแลห้องก่อนออก",
+    ruleClosingDesc: "ก่อนออกจากห้อง ให้ปิดแอร์และไฟตามความเหมาะสม เก็บอุปกรณ์ส่วนกลางให้เรียบร้อย รักษาความสะอาด และแจ้งผู้ดูแลระบบหากพบปัญหาเกี่ยวกับห้องหรืออุปกรณ์"
   }
 } as const;
 
@@ -604,14 +604,12 @@ export const formatTimeRange = (
   }
 };
 
-export const formatDate = (date: Date, language: "th" | "en", options: Intl.DateTimeFormatOptions = {}): string => {
-  const locale = language === "th" ? "th-TH" : "en-US";
-  return date.toLocaleDateString(locale, {
-    weekday: options.weekday || "long",
-    year: options.year || "numeric",
-    month: options.month || "long",
-    day: options.day || "numeric",
-  });
+export const formatDate = (date: Date, _language: "th" | "en", _options: Intl.DateTimeFormatOptions = {}): string => {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return "";
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const year = date.getFullYear();
+  return `${month}/${day}/${year}`;
 };
 
 export const TRANSLATE_MAP: Record<string, string> = {

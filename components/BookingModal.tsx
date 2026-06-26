@@ -92,12 +92,9 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
       const dateStr = String(d.getDate()).padStart(2, '0');
       const value = `${year}-${month}-${dateStr}`;
 
-      // Thai: วันศุกร์ที่ 12/06/69
-      const thaiYearShort = String(year + 543).slice(-2);
-      const labelTh = `${daysOfWeekTh[d.getDay()]} ${dateStr}/${month}/${thaiYearShort}`;
-
-      // English international format: DD/MM/YYYY
-      const labelEn = `${daysOfWeekEn[d.getDay()]}, ${dateStr}/${month}/${year}`;
+      const displayDate = `${month}/${dateStr}/${year}`;
+      const labelTh = `${daysOfWeekTh[d.getDay()]} ${displayDate}`;
+      const labelEn = `${daysOfWeekEn[d.getDay()]}, ${displayDate}`;
 
       dates.push({ value, label: language === 'th' ? labelTh : labelEn });
     }

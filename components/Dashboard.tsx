@@ -705,7 +705,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               >
                 <Calendar className="w-4 h-4 text-brand-600" />
                 <span>
-                  {selectedDateObj.toLocaleDateString(language === 'th' ? 'th-TH' : 'en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  {formatDate(selectedDateObj, language)}
                 </span>
                 <ChevronDown className={`w-4 h-4 text-brand-500 transition-transform duration-200 ${isCalendarOpen ? 'rotate-180' : ''}`} />
               </button>
@@ -1146,29 +1146,19 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       `}
                                         title={`${translateText(booking.title, language)} (${booking.organizer} - ${booking.department}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
-                                        {/* Row 1: name & badge */}
-                                        <div className="flex justify-between items-start w-full gap-2 min-w-0">
-                                          <div className="truncate text-[10px] text-slate-800 font-bold flex-1 min-w-0">
-                                            <span className="font-semibold text-slate-500">{language === 'th' ? 'ชื่อ: ' : 'name: '}</span>
-                                            {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
-                                          </div>
-                                          <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
-                                            {getBookingDisplayLabel(booking)}
-                                          </span>
+                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
+                                          {getBookingDisplayLabel(booking)}
+                                        </span>
+                                        <div className="truncate text-[10px] text-slate-800 font-bold w-full">
+                                          {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
                                         </div>
-                                        {/* Row 2: dept */}
-                                        <div className="truncate text-[10px] text-slate-600">
-                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'แผนก: ' : 'dept: '}</span>
+                                        <div className="truncate text-[10px] text-slate-600 w-full">
                                           {booking.department || '-'}
                                         </div>
-                                        {/* Row 3: desk */}
-                                        <div className="truncate text-[10px] text-slate-600">
-                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'โต๊ะ: ' : 'desk: '}</span>
+                                        <div className="truncate text-[10px] text-slate-600 w-full">
                                           {booking.deskNumber || '-'}
                                         </div>
-                                        {/* Row 4: purpose */}
                                         <div className="timeline-grid-purpose text-[10px] text-slate-600" title={translateText(booking.title, language) || '-'}>
-                                          <span className="font-semibold text-slate-500">{language === 'th' ? 'วัตถุประสงค์: ' : 'purpose: '}</span>
                                           <span className="timeline-grid-purpose-track inline">
                                             {translateText(booking.title, language) || '-'}
                                           </span>
@@ -1238,10 +1228,10 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* VIEW: SINGLE ROOM DETAIL */}
       {selectedRoomId !== 'ALL' && selectedRoom && (
-        <div className="grid grid-cols-1 lg:grid-cols-[minmax(430px,1fr)_minmax(440px,540px)] xl:grid-cols-[minmax(470px,1fr)_minmax(500px,600px)] gap-5 xl:gap-8 animate-in fade-in slide-in-from-right-4 duration-300">
+        <div className="grid grid-cols-1 lg:grid-cols-[minmax(430px,1fr)_minmax(440px,540px)] xl:grid-cols-[minmax(470px,1fr)_minmax(500px,600px)] gap-5 xl:gap-8 lg:items-start lg:h-[calc(100vh-9rem)] lg:overflow-hidden animate-in fade-in slide-in-from-right-4 duration-300">
 
           {/* Left Col: Timeline Visual */}
-          <div className="bg-white rounded-xl shadow-sm border border-cyan-100 p-4 overflow-x-auto text-slate-800">
+          <div className="bg-white rounded-xl shadow-sm border border-cyan-100 p-4 overflow-x-auto text-slate-800 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-9rem)]">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2.5 gap-y-2">
               <h3 className="font-bold text-slate-850 flex items-center">
                 <Clock className="w-5 h-5 mr-2 text-cyan-500" />
@@ -1366,7 +1356,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Right Col: Room Info & Inlined Booking Form */}
-          <div className="space-y-5">
+          <div className="space-y-5 lg:max-h-[calc(100vh-9rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-2 custom-scrollbar">
             {/* Room Summary Card with Inlined Booking Form */}
             {selectedRoom && (
               <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-805">

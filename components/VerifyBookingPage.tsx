@@ -43,14 +43,17 @@ const VerifyBookingPage: React.FC<VerifyBookingPageProps> = ({ language }) => {
     return () => window.clearInterval(timer);
   }, []);
 
-  const formatLocal = (date: Date) => date.toLocaleString(language === 'th' ? 'th-TH' : 'en-GB', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-  });
+  const formatLocal = (date: Date) => {
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const year = date.getFullYear();
+    const time = date.toLocaleTimeString(language === 'th' ? 'th-TH' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    return `${month}/${day}/${year} ${time}`;
+  };
 
   const verifyBooking = async (booking: VerificationBooking) => {
     setState({ status: 'submitting', booking });
