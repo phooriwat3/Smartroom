@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AVAILABLE_ROOMS, INITIAL_BOOKINGS_MOCK, BOOKING_START_HOUR, BOOKING_END_HOUR } from './constants';
 import { Room, Booking, RoomType, BookingStatus, AdminUser, RoomMaintenanceRecord } from './types';
 import RoomCard from './components/RoomCard';
 import BookingModal from './components/BookingModal';
 import Dashboard from './components/Dashboard';
 import AdminPanel from './components/AdminPanel';
-import AIAssistant from './components/AIAssistant';
 import ConfirmationModal from './components/ConfirmationModal';
 import VerifyBookingPage from './components/VerifyBookingPage';
 import { TRANSLATIONS, getEffectiveRoomStatus, isRoomClosureExpired, isRoomClosedAt, isRoomCurrentlyClosed } from './translations';
@@ -326,7 +325,7 @@ const SmartRoomApplication: React.FC = () => {
   const [isUserGuideOpen, setIsUserGuideOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isAdminLoginModalOpen, setIsAdminLoginModalOpen] = useState(false);
-  
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -339,7 +338,7 @@ const SmartRoomApplication: React.FC = () => {
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const [bookingConfirmationModal, setBookingConfirmationModal] = useState<{
@@ -563,7 +562,7 @@ const SmartRoomApplication: React.FC = () => {
         if (b.status === BookingStatus.REJECTED || b.status === BookingStatus.NO_SHOW) return false;
         if (noShowRequestIdsRef.current.has(b.id)) return false;
         if (b.actualStartTime) return false; // Already checked in
-        
+
         const cutoffTime = new Date(b.startTime.getTime() + 15 * 60 * 1000);
         return nowTime > cutoffTime;
       });
@@ -593,16 +592,16 @@ const SmartRoomApplication: React.FC = () => {
       if (bookings.length === 0) return;
       const nowTime = new Date();
       const todayStart = new Date(nowTime.getFullYear(), nowTime.getMonth(), nowTime.getDate());
-      
+
       const pastIncomplete = bookings.filter(b => {
         const isBeforeToday = b.startTime < todayStart;
         if (!isBeforeToday) return false;
-        
+
         if (b.status === BookingStatus.NO_SHOW) return false;
         if (!b.actualStartTime) return false;
         return !b.actualEndTime;
       });
-      
+
       for (const b of pastIncomplete) {
         console.log(`Finalizing past incomplete booking ${b.id}`);
         try {
@@ -614,7 +613,7 @@ const SmartRoomApplication: React.FC = () => {
         }
       }
     };
-    
+
     finalizePastIncomplete();
   }, [bookings]);
 
@@ -771,7 +770,7 @@ const SmartRoomApplication: React.FC = () => {
       showNotification(language === 'th' ? `แก้ไขข้อมูลไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` : `Update failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
       try {
         handleFirestoreError(e, OperationType.UPDATE, `bookings/${id}`);
-      } catch (loggingError) {}
+      } catch (loggingError) { }
       return false;
     }
   };
@@ -787,7 +786,7 @@ const SmartRoomApplication: React.FC = () => {
       showNotification(language === 'th' ? `อนุมัติไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` : `Approval failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
       try {
         handleFirestoreError(e, OperationType.UPDATE, `bookings/${id}`);
-      } catch (loggingError) {}
+      } catch (loggingError) { }
     }
   };
 
@@ -810,7 +809,7 @@ const SmartRoomApplication: React.FC = () => {
           showNotification(language === 'th' ? `การปฏิเสธไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` : `Rejection failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
           try {
             handleFirestoreError(e, OperationType.UPDATE, `bookings/${id}`);
-          } catch (loggingError) {}
+          } catch (loggingError) { }
         }
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
@@ -959,9 +958,9 @@ const SmartRoomApplication: React.FC = () => {
       ? buildMaintenanceHistoryRecord(updatedRoom)
       : previousRoom?.isClosed
         ? buildMaintenanceHistoryRecord({
-            ...previousRoom,
-            closureEndDate: previousRoom.closureEndDate || getLocalDateString(new Date())
-          })
+          ...previousRoom,
+          closureEndDate: previousRoom.closureEndDate || getLocalDateString(new Date())
+        })
         : null;
     const roomToSave = withRoomMaintenanceHistory(updatedRoom, closingRecord);
     try {
@@ -1080,7 +1079,7 @@ const SmartRoomApplication: React.FC = () => {
         const newBookingId = Math.random().toString(36).substr(2, 9);
 
         // Check for double-bookings
-        const isOverlapping = activeBookings.some(b => 
+        const isOverlapping = activeBookings.some(b =>
           b.roomId === bookingData.roomId &&
           b.status !== BookingStatus.REJECTED &&
           b.startTime.getTime() < bookingData.endTime.getTime() &&
@@ -1163,7 +1162,7 @@ const SmartRoomApplication: React.FC = () => {
         }
 
         // Find all existing non-rejected bookings for this room on this date that haven't been checked in
-        const existingDateRoomBookings = activeBookings.filter(b => 
+        const existingDateRoomBookings = activeBookings.filter(b =>
           b.roomId === room.id &&
           b.status !== BookingStatus.REJECTED &&
           b.startTime < dayEnd &&
@@ -1186,10 +1185,10 @@ const SmartRoomApplication: React.FC = () => {
         // Group selected hours into contiguous segments to create minimal bookings
         const sorted = [...data.selectedHours].sort((a, b) => a - b);
         const segments: { startHour: number; endHour: number }[] = [];
-        
+
         let currentStart = sorted[0];
         let currentEnd = sorted[0] + 1;
-        
+
         for (let i = 1; i < sorted.length; i++) {
           if (sorted[i] === currentEnd) {
             currentEnd = sorted[i] + 1;
@@ -1234,106 +1233,105 @@ const SmartRoomApplication: React.FC = () => {
     }
   };
 
-  const filteredRooms = filterType === 'All' 
-    ? effectiveRooms 
+  const filteredRooms = filterType === 'All'
+    ? effectiveRooms
     : effectiveRooms.filter(room => room.type === filterType);
 
   const stats = {
-      total: effectiveRooms.length,
-      available: effectiveRooms.filter(r => {
-          if (isRoomCurrentlyClosed(r, roomStatusNow)) return false;
-          return !activeBookings.some(b =>
-            b.roomId === r.id && 
-            roomStatusNow >= b.startTime && 
-            roomStatusNow <= b.endTime &&
-            b.status !== BookingStatus.REJECTED
-          )
-      }).length
+    total: effectiveRooms.length,
+    available: effectiveRooms.filter(r => {
+      if (isRoomCurrentlyClosed(r, roomStatusNow)) return false;
+      return !activeBookings.some(b =>
+        b.roomId === r.id &&
+        roomStatusNow >= b.startTime &&
+        roomStatusNow <= b.endTime &&
+        b.status !== BookingStatus.REJECTED
+      )
+    }).length
   };
 
   // Get bookings only for the currently selected room to pass to the modal (Exclude Rejected)
-  const selectedRoomBookings = selectedRoomForModal 
+  const selectedRoomBookings = selectedRoomForModal
     ? activeBookings.filter(b => b.roomId === selectedRoomForModal.id && b.status !== BookingStatus.REJECTED)
     : [];
 
   if (currentView === 'admin') {
     return (
       <div className="min-h-screen bg-slate-50 p-6 md:p-8 overflow-y-auto">
-         <AdminPanel 
-            rooms={effectiveRooms} 
-            bookings={activeBookings} 
-            onDeleteBooking={handleDeleteBooking}
-            onUpdateBooking={handleUpdateBooking}
-            onApproveBooking={handleApproveBooking}
-            onRejectBooking={handleRejectBooking}
-            onAddRoom={handleAddRoom}
-            onUpdateRoom={handleUpdateRoom}
-            onDeleteRoom={handleDeleteRoom}
-            language={language}
-            setLanguage={setLanguage}
-            showNotification={showNotification}
-            currentUser={adminUser}
-            setCurrentUser={setAdminUser}
-            onBackToUser={handleAdminLogoutToUserEntry}
-         />
-         {/* Toast message overlay for admin */}
-         {toast.isOpen && (
-           <div className="fixed bottom-6 right-6 z-[9999] animate-in fade-in slide-in-from-bottom-5 duration-300">
-             <div className={`p-4 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold max-w-sm ${
-               toast.type === 'success' 
-                 ? 'bg-emerald-50 text-emerald-800 border-emerald-100' 
-                 : toast.type === 'error'
-                 ? 'bg-rose-50 text-rose-800 border-rose-100'
-                 : 'bg-slate-50 text-slate-800 border-slate-100'
-             }`}>
-               {toast.type === 'success' ? (
-                 <Check className="w-5 h-5 text-emerald-500 flex-shrink-0" />
-               ) : toast.type === 'error' ? (
-                 <XCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
-               ) : (
-                 <AlertCircle className="w-5 h-5 text-slate-500 flex-shrink-0" />
-               )}
-               <span className="flex-1">{toast.message}</span>
-               <button 
-                 type="button"
-                 onClick={() => setToast(prev => ({ ...prev, isOpen: false }))} 
-                 className="text-slate-400 hover:text-slate-600 font-bold px-1 text-md leading-none"
-               >
-                 ×
-               </button>
-             </div>
-           </div>
-         )}
+        <AdminPanel
+          rooms={effectiveRooms}
+          bookings={activeBookings}
+          onDeleteBooking={handleDeleteBooking}
+          onUpdateBooking={handleUpdateBooking}
+          onApproveBooking={handleApproveBooking}
+          onRejectBooking={handleRejectBooking}
+          onAddRoom={handleAddRoom}
+          onUpdateRoom={handleUpdateRoom}
+          onDeleteRoom={handleDeleteRoom}
+          language={language}
+          setLanguage={setLanguage}
+          showNotification={showNotification}
+          currentUser={adminUser}
+          setCurrentUser={setAdminUser}
+          onBackToUser={handleAdminLogoutToUserEntry}
+        />
+        {/* Toast message overlay for admin */}
+        {toast.isOpen && (
+          <div className="fixed bottom-6 right-6 z-[9999] animate-in fade-in slide-in-from-bottom-5 duration-300">
+            <div className={`p-4 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold max-w-sm ${toast.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+              : toast.type === 'error'
+                ? 'bg-rose-50 text-rose-800 border-rose-100'
+                : 'bg-slate-50 text-slate-800 border-slate-100'
+              }`}>
+              {toast.type === 'success' ? (
+                <Check className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+              ) : toast.type === 'error' ? (
+                <XCircle className="w-5 h-5 text-rose-500 flex-shrink-0" />
+              ) : (
+                <AlertCircle className="w-5 h-5 text-slate-500 flex-shrink-0" />
+              )}
+              <span className="flex-1">{toast.message}</span>
+              <button
+                type="button"
+                onClick={() => setToast(prev => ({ ...prev, isOpen: false }))}
+                className="text-slate-400 hover:text-slate-600 font-bold px-1 text-md leading-none"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
 
-         {/* ConfirmationModal must be here too — admin view is a separate early-return block */}
-         <ConfirmationModal
-           isOpen={confirmModal.isOpen}
-           title={confirmModal.title}
-           message={confirmModal.message}
-           confirmText={confirmModal.confirmText}
-           cancelText={confirmModal.cancelText}
-           isDanger={confirmModal.isDanger}
-           onConfirm={confirmModal.onConfirm}
-           onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
-         />
+        {/* ConfirmationModal must be here too — admin view is a separate early-return block */}
+        <ConfirmationModal
+          isOpen={confirmModal.isOpen}
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText={confirmModal.cancelText}
+          isDanger={confirmModal.isDanger}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        />
 
-         <BookingConfirmationModal
-           isOpen={bookingConfirmationModal.isOpen}
-           title={language === 'th' ? 'ยืนยันการจองสำเร็จ' : 'Booking confirmed'}
-           message={bookingConfirmationModal.message}
-           confirmText={language === 'th' ? 'ยืนยัน' : 'Confirm'}
-           closeLabel={language === 'th' ? 'ปิดข้อความยืนยันการจอง' : 'Close booking confirmation'}
-           onClose={closeBookingConfirmationModal}
-         />
+        <BookingConfirmationModal
+          isOpen={bookingConfirmationModal.isOpen}
+          title={language === 'th' ? 'ยืนยันการจองสำเร็จ' : 'Booking confirmed'}
+          message={bookingConfirmationModal.message}
+          confirmText={language === 'th' ? 'ยืนยัน' : 'Confirm'}
+          closeLabel={language === 'th' ? 'ปิดข้อความยืนยันการจอง' : 'Close booking confirmation'}
+          onClose={closeBookingConfirmationModal}
+        />
       </div>
     );
   }
 
   if (termsAccepted === false) {
     return (
-      <AccessDeniedOverlay 
-        language={language} 
-        onReview={() => setTermsAccepted(null)} 
+      <AccessDeniedOverlay
+        language={language}
+        onReview={() => setTermsAccepted(null)}
       />
     );
   }
@@ -1361,180 +1359,180 @@ const SmartRoomApplication: React.FC = () => {
       {/* Sidebar Navigation */}
       <aside className={`fixed inset-y-0 left-0 z-50 w-80 max-w-[85vw] bg-white border-r border-slate-200 flex-shrink-0 flex flex-col transform transition-transform duration-300 ease-out md:sticky md:top-0 md:z-10 md:h-screen md:w-64 md:max-w-none md:translate-x-0 ${isMobileDrawerOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}>
         <div className="p-6">
-            <div className="mb-4 flex justify-end md:hidden">
-                <button
-                    type="button"
-                    onClick={() => setIsMobileDrawerOpen(false)}
-                    className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
-                    aria-label={language === 'th' ? 'ปิดเมนู' : 'Close menu'}
-                >
-                    <X className="h-5 w-5" />
-                </button>
-            </div>
-            <div 
-                onClick={() => {
-                  if (adminUser) {
-                    showNotification(language === 'th' ? 'กรุณาออกจากระบบก่อนกลับไปหน้าผู้ใช้งาน' : 'Please log out before returning to User mode', 'info');
-                    return;
-                  }
-                  navigateToView('dashboard');
-                  setSelectedRoomId('ALL');
-                  setFilterType('All');
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`flex items-center space-x-2 text-brand-500 mb-6 transition-all ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-85 active:scale-[0.99]'}`}
+          <div className="mb-4 flex justify-end md:hidden">
+            <button
+              type="button"
+              onClick={() => setIsMobileDrawerOpen(false)}
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+              aria-label={language === 'th' ? 'ปิดเมนู' : 'Close menu'}
             >
-                <LayoutGrid className="w-8 h-8" />
-                <span className="text-xl font-bold tracking-tight">TOKIN Smart Room</span>
-            </div>
-
-            {/* Language Switcher */}
-            <div className="flex bg-slate-100 p-1 rounded-lg mb-6 border border-slate-200 shadow-sm">
-                <button 
-                    onClick={() => setLanguage('en')}
-                    className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'en' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                    English
-                </button>
-                <button 
-                    onClick={() => setLanguage('th')}
-                    className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'th' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
-                >
-                    ภาษาไทย
-                </button>
-            </div>
-
-            <div className="space-y-6">
-                <div>
-                    <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t.menu}</h3>
-                    <div className="space-y-1">
-                        <button 
-                            onClick={() => {
-                              if (adminUser) {
-                                showNotification(language === 'th' ? 'กรุณาออกจากระบบก่อนกลับไปหน้าผู้ใช้งาน' : 'Please log out before returning to User mode', 'info');
-                                return;
-                              }
-                              navigateToView('dashboard');
-                              setSelectedRoomId('ALL');
-                              setIsMobileDrawerOpen(false);
-                            }}
-                            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'dashboard' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'} ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                        >
-                            <LayoutGrid className="w-5 h-5" />
-                            <span>{language === 'th' ? 'ภาพรวมและแดชบอร์ด' : 'Overview & Dashboard'}</span>
-                        </button>
-                        
-                        <button 
-                            type="button"
-                            onClick={() => {
-                              setIsUserGuideOpen(true);
-                              setIsMobileDrawerOpen(false);
-                            }}
-                            className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 text-slate-600 hover:bg-slate-50 cursor-pointer"
-                        >
-                            <BookOpen className="w-5 h-5" />
-                            <span>{t.userGuideBtn}</span>
-                        </button>
-                    </div>
-                </div>
-
-                {currentView === 'dashboard' && (
-                    <div className="animate-in fade-in slide-in-from-left-2 duration-300">
-                        <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t.filterRooms}</h3>
-                        <div className="space-y-1">
-                            <button 
-                                onClick={() => {
-                                  setFilterType('All');
-                                  setIsMobileDrawerOpen(false);
-                                }}
-                                className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === 'All' ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
-                            >
-                                <span>{t.allRoomsSelector}</span>
-                                <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.length}</span>
-                            </button>
-                            <button 
-                                onClick={() => {
-                                  setFilterType(RoomType.MEETING);
-                                  setIsMobileDrawerOpen(false);
-                                }}
-                                className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.MEETING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
-                            >
-                                <span>{t.meetingRoom}</span>
-                                <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.MEETING).length}</span>
-                            </button>
-                            <button 
-                                onClick={() => {
-                                  setFilterType(RoomType.RECEPTION);
-                                  setIsMobileDrawerOpen(false);
-                                }}
-                                className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.RECEPTION ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
-                            >
-                                <span>{t.receptionArea}</span>
-                                <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.RECEPTION).length}</span>
-                            </button>
-                            <button 
-                                onClick={() => {
-                                  setFilterType(RoomType.TRAINING);
-                                  setIsMobileDrawerOpen(false);
-                                }}
-                                className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.TRAINING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
-                            >
-                                <span>{t.trainingRoom}</span>
-                                <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.TRAINING).length}</span>
-                            </button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        </div>
-
-        {/* Admin Link at bottom */}
-        <div className="p-6 mt-auto border-t border-slate-200">
-             <button 
-                onClick={() => {
-                  setIsAdminLoginModalOpen(true);
-                  setIsMobileDrawerOpen(false);
-                }}
-                className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'admin' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-                <Settings className="w-5 h-5" />
-                <span>{t.adminPanel}</span>
+              <X className="h-5 w-5" />
             </button>
+          </div>
+          <div
+            onClick={() => {
+              if (adminUser) {
+                showNotification(language === 'th' ? 'กรุณาออกจากระบบก่อนกลับไปหน้าผู้ใช้งาน' : 'Please log out before returning to User mode', 'info');
+                return;
+              }
+              navigateToView('dashboard');
+              setSelectedRoomId('ALL');
+              setFilterType('All');
+              setIsMobileDrawerOpen(false);
+            }}
+            className={`flex items-center space-x-2 text-brand-500 mb-6 transition-all ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-85 active:scale-[0.99]'}`}
+          >
+            <LayoutGrid className="w-8 h-8" />
+            <span className="text-xl font-bold tracking-tight">TOKIN Smart Room</span>
+          </div>
+
+          {/* Language Switcher */}
+          <div className="flex bg-slate-100 p-1 rounded-lg mb-6 border border-slate-200 shadow-sm">
+            <button
+              onClick={() => setLanguage('en')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'en' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              English
+            </button>
+            <button
+              onClick={() => setLanguage('th')}
+              className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'th' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+            >
+              ภาษาไทย
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            <div>
+              <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t.menu}</h3>
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    if (adminUser) {
+                      showNotification(language === 'th' ? 'กรุณาออกจากระบบก่อนกลับไปหน้าผู้ใช้งาน' : 'Please log out before returning to User mode', 'info');
+                      return;
+                    }
+                    navigateToView('dashboard');
+                    setSelectedRoomId('ALL');
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'dashboard' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'} ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                >
+                  <LayoutGrid className="w-5 h-5" />
+                  <span>{language === 'th' ? 'แดชบอร์ด' : 'Dashboard'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUserGuideOpen(true);
+                    setIsMobileDrawerOpen(false);
+                  }}
+                  className="w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 text-slate-600 hover:bg-slate-50 cursor-pointer"
+                >
+                  <BookOpen className="w-5 h-5" />
+                  <span>{t.userGuideBtn}</span>
+                </button>
+              </div>
+            </div>
+
+            {currentView === 'dashboard' && (
+              <div className="animate-in fade-in slide-in-from-left-2 duration-300">
+                <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">{t.filterRooms}</h3>
+                <div className="space-y-1">
+                  <button
+                    onClick={() => {
+                      setFilterType('All');
+                      setIsMobileDrawerOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === 'All' ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    <span>{t.allRoomsSelector}</span>
+                    <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.length}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilterType(RoomType.MEETING);
+                      setIsMobileDrawerOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.MEETING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    <span>{t.meetingRoom}</span>
+                    <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.MEETING).length}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilterType(RoomType.RECEPTION);
+                      setIsMobileDrawerOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.RECEPTION ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    <span>{t.receptionArea}</span>
+                    <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.RECEPTION).length}</span>
+                  </button>
+                  <button
+                    onClick={() => {
+                      setFilterType(RoomType.TRAINING);
+                      setIsMobileDrawerOpen(false);
+                    }}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.TRAINING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                  >
+                    <span>{t.trainingRoom}</span>
+                    <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.TRAINING).length}</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="px-6 py-6 border-t border-slate-100 hidden md:block">
+          <div className="px-6 py-6 border-t border-slate-100 hidden md:block">
             <h3 className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-4">{t.liveStatus}</h3>
             <div className="space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">{t.totalRooms}</span>
-                    <span className="font-semibold text-slate-900">{stats.total}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">{t.availableNow}</span>
-                    <span className="font-semibold text-green-600">{stats.available}</span>
-                </div>
-                <div className="flex justify-between items-center text-sm">
-                    <span className="text-slate-600">{t.occupied}</span>
-                    <span className="font-semibold text-red-600">{stats.total - stats.available}</span>
-                </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">{t.totalRooms}</span>
+                <span className="font-semibold text-slate-900">{stats.total}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">{t.availableNow}</span>
+                <span className="font-semibold text-green-600">{stats.available}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-slate-600">{t.occupied}</span>
+                <span className="font-semibold text-red-600">{stats.total - stats.available}</span>
+              </div>
             </div>
+          </div>
+        {/* Admin Link at bottom */}
+        <div className="p-6 mt-auto border-t border-slate-200">
+          <button
+            onClick={() => {
+              setIsAdminLoginModalOpen(true);
+              setIsMobileDrawerOpen(false);
+            }}
+            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'admin' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <Settings className="w-5 h-5" />
+            <span>{t.adminPanel}</span>
+          </button>
         </div>
+
       </aside>
 
       {/* Main Content */}
       <main className="flex-1 p-6 pt-20 md:p-8 overflow-y-auto">
 
         {currentView === 'dashboard' && (
-             <Dashboard 
-                rooms={filteredRooms} 
-                bookings={activeBookings} 
-                maintenanceHistory={maintenanceHistory}
-                language={language} 
-                onDeleteBooking={handleDeleteBooking} 
-                onConfirmBooking={handleConfirmBooking}
-                selectedRoomId={selectedRoomId}
-                setSelectedRoomId={setSelectedRoomId}
-             />
+          <Dashboard
+            rooms={filteredRooms}
+            bookings={activeBookings}
+            maintenanceHistory={maintenanceHistory}
+            language={language}
+            onDeleteBooking={handleDeleteBooking}
+            onConfirmBooking={handleConfirmBooking}
+            selectedRoomId={selectedRoomId}
+            setSelectedRoomId={setSelectedRoomId}
+          />
         )}
       </main>
 
@@ -1607,24 +1605,15 @@ const SmartRoomApplication: React.FC = () => {
         </div>
       )}
 
-      {/* AI Assistant */}
-      <AIAssistant 
-        currentBookings={activeBookings} 
-        rooms={effectiveRooms} 
-        language={language} 
-        onBookRoom={handleBookRoom}
-      />
-
       {/* Modern custom safe Toast message overlay */}
       {toast.isOpen && (
         <div className="fixed bottom-6 right-6 z-[9999] animate-in fade-in slide-in-from-bottom-5 duration-300">
-          <div className={`p-4 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold max-w-sm ${
-            toast.type === 'success' 
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-100' 
-              : toast.type === 'error'
+          <div className={`p-4 rounded-xl shadow-lg border flex items-center space-x-3 text-sm font-semibold max-w-sm ${toast.type === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+            : toast.type === 'error'
               ? 'bg-rose-50 text-rose-800 border-rose-100'
               : 'bg-slate-50 text-slate-800 border-slate-100'
-          }`}>
+            }`}>
             {toast.type === 'success' ? (
               <Check className="w-5 h-5 text-emerald-500 flex-shrink-0" />
             ) : toast.type === 'error' ? (
@@ -1633,9 +1622,9 @@ const SmartRoomApplication: React.FC = () => {
               <AlertCircle className="w-5 h-5 text-slate-500 flex-shrink-0" />
             )}
             <span className="flex-1">{toast.message}</span>
-            <button 
+            <button
               type="button"
-              onClick={() => setToast(prev => ({ ...prev, isOpen: false }))} 
+              onClick={() => setToast(prev => ({ ...prev, isOpen: false }))}
               className="text-slate-400 hover:text-slate-600 font-bold px-1 text-md leading-none"
             >
               ×
@@ -1645,7 +1634,7 @@ const SmartRoomApplication: React.FC = () => {
       )}
       {/* Terms Agreement Overlay */}
       {termsAccepted === null && (
-        <TermsModal 
+        <TermsModal
           language={language}
           setLanguage={setLanguage}
           rooms={effectiveRooms}
@@ -1656,7 +1645,7 @@ const SmartRoomApplication: React.FC = () => {
 
       {/* User Guide Manual Overlay */}
       {isUserGuideOpen && (
-        <UserGuideModal 
+        <UserGuideModal
           language={language}
           rooms={effectiveRooms}
           onClose={() => setIsUserGuideOpen(false)}

@@ -1,4 +1,4 @@
-import { Room } from './types';
+﻿import { Room } from './types';
 import { BOOKING_START_HOUR, BOOKING_END_HOUR } from './constants';
 
 export const TRANSLATIONS = {
@@ -50,7 +50,7 @@ export const TRANSLATIONS = {
     overviewAllRooms: "Overview and schedules for all rooms.",
     detailedTimelineFor: "Detailed timeline for",
     today: "Today",
-    statusCards: "Status Cards",
+    statusCards: "Status",
     timelineGrid: "Timeline Grid",
     insightsStats: "Insights & Stats",
     schedulesFor: "Schedules for",
@@ -281,9 +281,9 @@ export const TRANSLATIONS = {
     menu: "แผนผังเมนูหลัก",
     filterRooms: "กรองประเภทห้อง",
     allRooms: "ห้องประชุมทั้งหมด",
-    meetingRoom: "ห้องประชุม (Meeting)",
-    receptionArea: "พื้นที่รับรอง (Reception)",
-    trainingRoom: "ห้องอบรม (Training)",
+    meetingRoom: "ห้องประชุม",
+    receptionArea: "พื้นที่รับรอง",
+    trainingRoom: "ห้องอบรม",
     liveStatus: "สถานะปัจจุบัน",
     totalRooms: "จำนวนห้องที่มี",
     availableNow: "ห้องว่างตอนนี้",
@@ -322,9 +322,9 @@ export const TRANSLATIONS = {
     overviewAllRooms: "ข้อมูลภาพรวมและการจองใช้ของทุกห้องประชุมในระบบ",
     detailedTimelineFor: "แสดงรายละเอียดช่วงเวลาใช้งานจริงของ",
     today: "วันนี้",
-    statusCards: "สถานะการ์ดข้อมูลแยกห้อง",
+    statusCards: "สถานะห้อง",
     timelineGrid: "ตารางเวลาใช้งาน",
-    insightsStats: "ข้อมูลสรุปเชิงลึกและสถิติ",
+    insightsStats: "ข้อมูลสรุปและสถิติ",
     schedulesFor: "ข้อมูลการจองในส่วนของวัน",
     pax: "คน",
     currentBooking: "กำลังประชุมขณะนี้",
@@ -528,7 +528,7 @@ export const TRANSLATIONS = {
     declineTitle: "ไม่สามารถเข้าใช้งานระบบได้",
     declineMessage: "ขออภัย คุณจำเป็นต้องกดยอมรับแนวปฏิบัติการใช้บริการห้องประชุมก่อนจึงจะสามารถเข้าใช้และทำเรื่องจองจุดใช้งานต่าง ๆ ในระบบ TOKIN Smart Room ได้",
     reviewTermsBtn: "ตรวจสอบแนวปฏิบัติอีกครั้ง",
-    userGuideBtn: "คู่มือการใช้งานระบบ",
+    userGuideBtn: "คู่มือการใช้งาน",
     userGuideTitle: "คู่มือการใช้งานระบบจองห้องประชุม TOKIN Smart Room",
     close: "ปิดหน้าต่าง",
     ruleEligibleTitle: "1. ผู้มีสิทธิ์ใช้บริการ",

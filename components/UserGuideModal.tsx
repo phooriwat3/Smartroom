@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { TRANSLATIONS } from '../translations';
-import { X, Layout, CalendarRange, Sparkles, BookOpen, Clock, Users, ArrowRight, CheckCircle, ShieldAlert, Monitor, Ban } from 'lucide-react';
+import { X, Layout, CalendarRange, BookOpen, Clock, Users, ArrowRight, CheckCircle, ShieldAlert, Monitor, Ban } from 'lucide-react';
 import { Room } from '../types';
 
 interface UserGuideModalProps {
@@ -15,19 +15,18 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
   onClose
 }) => {
   const t = TRANSLATIONS[language];
-  const [activeTab, setActiveTab] = useState<'overview' | 'booking' | 'ai' | 'rules'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'booking' | 'rules'>('overview');
 
   const tabs = [
     { id: 'overview', label: language === 'th' ? 'ภาพรวมและตารางเวลา' : 'Overview & Timeline', icon: Layout },
     { id: 'booking', label: language === 'th' ? 'ขั้นตอนการจองห้อง' : 'How to Book', icon: CalendarRange },
-    { id: 'ai', label: language === 'th' ? 'ผู้ช่วย AI อัจฉริยะ' : 'AI Assistant Guide', icon: Sparkles },
     { id: 'rules', label: language === 'th' ? 'กฎระเบียบการใช้งาน' : 'Room Rules', icon: BookOpen },
   ] as const;
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
       <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[80vh] animate-in zoom-in-95 duration-300">
-        
+
         {/* Header */}
         <div className="bg-slate-50 px-6 py-4 border-b border-slate-150 flex items-center justify-between flex-shrink-0">
           <div className="flex items-center space-x-2.5">
@@ -53,11 +52,10 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id)}
-                  className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center space-x-2 transition-all flex-shrink-0 ${
-                    activeTab === tab.id
+                  className={`px-4 py-2 text-xs font-bold rounded-lg flex items-center space-x-2 transition-all flex-shrink-0 ${activeTab === tab.id
                       ? 'bg-white text-brand-600 shadow-sm border border-slate-200'
                       : 'text-slate-600 hover:text-slate-850 hover:bg-white/40'
-                  }`}
+                    }`}
                 >
                   <Icon className="w-3.5 h-3.5" />
                   <span>{tab.label}</span>
@@ -69,14 +67,14 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
 
         {/* Tab Content Panels */}
         <div className="p-6 overflow-y-auto flex-grow text-slate-800 scrollbar-thin text-sm leading-relaxed">
-          
+
           {activeTab === 'overview' && (
             <div className="space-y-5">
               <div className="bg-brand-50 border border-brand-100 rounded-xl p-4 flex items-start space-x-3">
                 <Layout className="w-5 h-5 text-brand-600 mt-0.5 flex-shrink-0" />
                 <div>
                   <h4 className="font-bold text-brand-900 text-xs uppercase tracking-wider">
-                    {language === 'th' ? 'หน้าแดชบอร์ดอัจฉริยะ' : 'SMART DASHBOARD SUMMARY'}
+                    {language === 'th' ? 'หน้าแดชบอร์ด' : 'SMART DASHBOARD SUMMARY'}
                   </h4>
                   <p className="text-xs text-brand-700 font-medium mt-1">
                     {language === 'th'
@@ -132,7 +130,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
           {activeTab === 'booking' && (
             <div className="space-y-4">
               <h3 className="font-bold text-slate-900 text-sm">{language === 'th' ? 'แนวทางขั้นตอนการส่งคำจองห้องประชุม' : 'Step-by-step Room Booking Guide'}</h3>
-              
+
               <div className="space-y-3">
                 <div className="flex space-x-3.5 items-start">
                   <div className="bg-brand-100 text-brand-700 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold font-mono flex-shrink-0 mt-0.5">1</div>
@@ -185,36 +183,10 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
             </div>
           )}
 
-          {activeTab === 'ai' && (
-            <div className="space-y-4">
-              <div className="bg-amber-50 border border-amber-250 rounded-xl p-4 flex items-start space-x-3">
-                <Sparkles className="w-5 h-5 text-amber-500 mt-0.5 flex-shrink-0 animate-pulse" />
-                <div>
-                  <h4 className="font-bold text-amber-900 text-xs uppercase tracking-wider">{language === 'th' ? 'ผู้ช่วยจองห้องเรียนรู้ Gemini (AI Assistant)' : 'GEMINI AI ASSISTANT'}</h4>
-                  <p className="text-xs text-slate-700 font-semibold mt-1">
-                    {language === 'th'
-                      ? 'คุณสามารถขอความช่วยเหลือในการเช็คห้องว่าง แนะนำห้องที่เหมาะสม หรือออกรายงานแบบเรียลไทม์โดยพิมพ์ถามตอบกับผู้ช่วยในแถบแชทขวามือ'
-                      : 'You can talk to the built-in Gemini assistant in the right sidebar chat window to search for rooms, ask queries, or request analysis reports.'}
-                  </p>
-                </div>
-              </div>
-
-              <div className="border border-slate-150 rounded-xl p-4 space-y-2">
-                <h4 className="font-bold text-slate-900 text-xs">{language === 'th' ? 'ตัวอย่างประโยคคำถามที่รองรับ:' : 'Recommended Prompts to Try:'}</h4>
-                <ul className="text-xs text-slate-600 font-bold space-y-1.5 list-disc pl-5 font-mono">
-                  <li>"มีห้องว่างให้จองตอนบ่ายสองบ้างไหม?" / "Any rooms available at 2 PM?"</li>
-                  <li>"แนะนำห้องสำหรับประชุม 6 คนให้หน่อย" / "Recommend a room for 6 people."</li>
-                  <li>"ห้องประชุมไหนมีทีวีและกระดานไวท์บอร์ดบ้าง?" / "Which rooms have a TV and whiteboard?"</li>
-                  <li>"แผนกไอที (IT) จองห้องไหนบ่อยที่สุดวันนี้?" / "Which room has IT booked the most today?"</li>
-                </ul>
-              </div>
-            </div>
-          )}
-
           {activeTab === 'rules' && (
             <div className="space-y-4">
               <h3 className="font-bold text-slate-900 text-sm">{language === 'th' ? 'ระเบียบและข้อตกลงในการใช้บริการสถานที่' : 'Official Workspace Rules & Service Guidelines'}</h3>
-              
+
               <div className="space-y-3 bg-slate-50 border border-slate-200 rounded-xl p-4">
                 {/* Rule list subset */}
                 <div className="flex space-x-2.5 items-start">
@@ -225,7 +197,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
                       : 'Book rooms exclusively using the digital booking portal to prevent double-bookings.'}
                   </p>
                 </div>
-                
+
                 <div className="flex space-x-2.5 items-start border-t border-slate-200/50 pt-2.5">
                   <ShieldAlert className="w-4 h-4 text-rose-500 flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-slate-700 font-semibold">
@@ -273,3 +245,4 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({
     </div>
   );
 };
+

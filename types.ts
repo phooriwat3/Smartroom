@@ -70,11 +70,16 @@ export interface Booking {
   actualEndTime?: Date;
   noShowMarkedAt?: any;
   verifiedAt?: any;
-  verificationEmailStatus?: 'queued' | 'sending' | 'sent' | 'failed';
+  verificationEmailStatus?: 'queued' | 'pending_retry' | 'sending' | 'sent' | 'failed';
   verificationEmailScheduledAt?: Date;
   verificationWindowOpenedAt?: Date;
   verificationWindowClosedAt?: Date;
+  verificationEmailNextRetryAt?: Date;
+  verificationEmailLastAttemptAt?: any;
+  verificationEmailRetryCount?: number;
   verificationEmailFailedAt?: any;
+  verificationEmailFailureCode?: string;
+  verificationEmailFailureMessage?: string;
   verifyUrl?: string;
 }
 

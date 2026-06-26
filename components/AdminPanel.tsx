@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, ChevronLeft, ChevronRight, BarChart2, Mail, RefreshCw } from 'lucide-react';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
 import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firestore';
@@ -140,14 +140,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     message: '',
     onConfirm: () => {},
   });
-  const [analyticsDateStr, setAnalyticsDateStr] = useState<string>(() => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
   const [searchTerm, setSearchTerm] = useState('');
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
+  const [bookingEditForm, setBookingEditForm] = useState({
+    roomId: '',
+    title: '',
+    organizer: '',
+    employeeId: '',
+    department: '',
+    deskNumber: '',
+    date: '',
+    startHour: BOOKING_START_HOUR,
+    endHour: Math.min(BOOKING_START_HOUR + 1, BOOKING_END_HOUR),
+    status: BookingStatus.CONFIRMED
+  });
 
   // Modals
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
@@ -517,15 +523,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const analyticsBookingsForDate = useMemo(() => {
-    return bookings.filter(b => {
-      const year = b.startTime.getFullYear();
-      const month = String(b.startTime.getMonth() + 1).padStart(2, '0');
-      const day = String(b.startTime.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
-      return dateStr === analyticsDateStr;
-    });
-  }, [bookings, analyticsDateStr]);
+  const getDateInputValue = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const isSameDay = (date: Date, compareDate: Date) => (
+    date.getDate() === compareDate.getDate() &&
+    date.getMonth() === compareDate.getMonth() &&
+    date.getFullYear() === compareDate.getFullYear()
+  );
+
+  const bookingMatchesSearch = (b: Booking) => (
+    b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    b.organizer.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (b.department && b.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (b.employeeId && b.employeeId.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    getRoomName(b.roomId).toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  const todayBookings = useMemo(() => {
+    const today = new Date();
+    return bookings
+      .filter(b => isSameDay(b.startTime, today))
+      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  }, [bookings]);
+
+  const analyticsBookingsForDate = useMemo(() => bookings, [bookings]);
 
   const analyticsData = useMemo(() => {
     const totalBookings = analyticsBookingsForDate.length;
@@ -535,13 +561,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const roomBookings = analyticsBookingsForDate.filter(b => b.roomId === room.id);
       let hoursBooked = 0;
       roomBookings.forEach(b => {
-        const overlapStart = Math.max(b.startTime.getTime(), new Date(analyticsDateStr).setHours(0, 0, 0, 0));
-        const overlapEnd = Math.min(b.endTime.getTime(), new Date(analyticsDateStr).setHours(23, 59, 59, 999));
-        const diffMs = Math.max(0, overlapEnd - overlapStart);
+        const diffMs = Math.max(0, b.endTime.getTime() - b.startTime.getTime());
         hoursBooked += diffMs / (1000 * 60 * 60);
       });
       
-      const occupancyRate = Math.min(Math.round((hoursBooked / 10) * 100), 100); // Out of a standard 10-hour workday
+      const occupancyRate = totalBookings > 0 ? Math.round((roomBookings.length / totalBookings) * 100) : 0;
       
       return {
         room,
@@ -597,27 +621,64 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       peakCount,
       roomStats
     };
-  }, [analyticsBookingsForDate, rooms, analyticsDateStr, language]);
+  }, [analyticsBookingsForDate, rooms, language]);
 
-  const navigateAnalyticsDate = (days: number) => {
-    const newDate = new Date(analyticsDateStr);
-    newDate.setDate(newDate.getDate() + days);
-    
-    const year = newDate.getFullYear();
-    const month = String(newDate.getMonth() + 1).padStart(2, '0');
-    const day = String(newDate.getDate()).padStart(2, '0');
-    setAnalyticsDateStr(`${year}-${month}-${day}`);
-  };
+  const filteredBookings = todayBookings
+    .filter(bookingMatchesSearch)
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-  const filteredBookings = bookings.filter(b => 
-    b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.organizer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (b.department && b.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (b.employeeId && b.employeeId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    getRoomName(b.roomId).toLowerCase().includes(searchTerm.toLowerCase())
-  ).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+  const bookingHistory = bookings
+    .filter(bookingMatchesSearch)
+    .sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
 
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
+
+  const openEditBookingModal = (booking: Booking) => {
+    setEditingBooking(booking);
+    setBookingEditForm({
+      roomId: booking.roomId,
+      title: booking.title || '',
+      organizer: booking.organizer || '',
+      employeeId: booking.employeeId || '',
+      department: booking.department || '',
+      deskNumber: booking.deskNumber || '',
+      date: getDateInputValue(booking.startTime),
+      startHour: booking.startTime.getHours(),
+      endHour: Math.max(booking.startTime.getHours() + 1, booking.endTime.getHours()),
+      status: booking.status || BookingStatus.CONFIRMED
+    });
+  };
+
+  const handleBookingEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingBooking || !onUpdateBooking) return;
+
+    const startHour = Number(bookingEditForm.startHour);
+    const endHour = Number(bookingEditForm.endHour);
+    if (!bookingEditForm.date || endHour <= startHour) {
+      showNotification(language === 'th' ? 'กรุณาตรวจสอบวันที่และเวลา' : 'Please check the booking date and time.', 'error');
+      return;
+    }
+
+    const startTime = new Date(`${bookingEditForm.date}T${String(startHour).padStart(2, '0')}:00:00`);
+    const endTime = new Date(`${bookingEditForm.date}T${String(endHour).padStart(2, '0')}:00:00`);
+    const success = await onUpdateBooking(editingBooking.id, {
+      roomId: bookingEditForm.roomId,
+      title: bookingEditForm.title.trim(),
+      organizer: bookingEditForm.organizer.trim(),
+      employeeId: bookingEditForm.employeeId.trim(),
+      department: bookingEditForm.department,
+      deskNumber: bookingEditForm.deskNumber.trim(),
+      startTime,
+      endTime,
+      status: bookingEditForm.status
+    });
+
+    if (success) {
+      setEditingBooking(null);
+      showNotification(language === 'th' ? 'อัปเดตรายการจองเรียบร้อยแล้ว' : 'Booking updated successfully.', 'success');
+    }
+  };
 
   const getAdminBookingDisplayState = (booking: Booking): AdminBookingDisplayState => {
     if (booking.status === BookingStatus.PENDING) return 'pending';
@@ -949,13 +1010,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <>
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('analytics')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 text-left transition-all hover:border-brand-300 hover:shadow-md active:scale-[0.99]"
+                >
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-slate-500 text-sm font-medium">{t.totalBookingsHeader}</span>
                     <Calendar className="w-5 h-5 text-indigo-500 opacity-75" />
                 </div>
                 <p className="text-3xl font-bold text-slate-800">{bookings.length}</p>
-                </div>
+                <p className="text-[11px] text-brand-600 font-bold mt-2">{language === 'th' ? 'คลิกเพื่อดูสถิติและประวัติทั้งหมด' : 'View analytics and history'}</p>
+                </button>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-slate-500 text-sm font-medium">{t.activeRooms}</span>
@@ -969,10 +1035,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <Calendar className="w-5 h-5 text-brand-500 opacity-75" />
                 </div>
                 <p className="text-3xl font-bold text-slate-800">
-                    {bookings.filter(b => {
-                        const now = new Date();
-                        return b.startTime.getDate() === now.getDate() && b.startTime > now && b.status === BookingStatus.CONFIRMED;
-                    }).length}
+                    {todayBookings.length}
                 </p>
                 </div>
             </div>
@@ -980,7 +1043,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Booking Management Table */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-                <h2 className="font-bold text-slate-800">{t.allBookings}</h2>
+                <h2 className="font-bold text-slate-800">{language === 'th' ? 'รายการจองวันนี้' : 'Today Bookings'}</h2>
                 <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                     <input
@@ -1080,6 +1143,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             </button>
                                         </>
                                     )}
+                                    {onUpdateBooking && (
+                                        <button
+                                            onClick={() => openEditBookingModal(booking)}
+                                            className="text-slate-400 hover:text-brand-600 hover:bg-brand-50 p-2 rounded-lg transition-all"
+                                            title={t.edit}
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                    )}
                                     {/* All admins can delete bookings */}
                                     <button
                                         onClick={() => onDeleteBooking(booking.id)}
@@ -1103,31 +1175,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'analytics' && (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
-           {/* Date Navigator Header for Analytics */}
-           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex items-center space-x-2">
-                 <button 
-                    onClick={() => navigateAnalyticsDate(-1)}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600"
-                    title={t.previousDay}
-                 >
-                    <ChevronLeft className="w-5 h-5" />
-                 </button>
-                 <div className="text-sm font-bold text-slate-800">
-                    {formatDate(new Date(analyticsDateStr), language, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                 </div>
-                 <button 
-                    onClick={() => navigateAnalyticsDate(1)}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600"
-                    title={t.nextDay}
-                 >
-                    <ChevronRight className="w-5 h-5" />
-                 </button>
+           {/* Total Bookings Header */}
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+              <div>
+                 <h2 className="font-bold text-slate-900 flex items-center">
+                    <BarChart2 className="w-5 h-5 mr-2 text-brand-500" />
+                    {t.totalBookingsHeader}
+                 </h2>
+                 <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'th' ? 'สถิติการจองทั้งหมดและประวัติย้อนหลัง' : 'Overall booking analytics and historical booking data'}</p>
               </div>
-              
-              <div className="text-xs text-slate-500 font-bold">
-                 {t.insightsStats} - {t.adminModeLabel}
-              </div>
+              <button
+                 type="button"
+                 onClick={() => setActiveTab('bookings')}
+                 className="px-3 py-2 rounded-lg border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50"
+              >
+                 {language === 'th' ? 'กลับไปดูรายการวันนี้' : 'Back to Today Bookings'}
+              </button>
            </div>
 
            {/* Metrics Stats Grid */}
@@ -1139,7 +1202,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalBookingsHeader}</div>
                     <div className="text-2xl font-bold text-slate-800">{analyticsData.totalBookings}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{t.todayScheduled}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{language === 'th' ? 'รายการทั้งหมดในระบบ' : 'all records in the system'}</div>
                  </div>
               </div>
 
@@ -1256,6 +1319,66 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <AlertCircle className="w-4 h-4 mr-2 text-indigo-500 flex-shrink-0 mt-0.5" />
                     <span>{t.insightsFooter}</span>
                  </div>
+              </div>
+           </div>
+
+           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
+              <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                 <div>
+                    <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{language === 'th' ? 'ประวัติการจอง' : 'Booking History'}</h4>
+                    <p className="text-xs text-slate-400 mt-1 font-semibold">{language === 'th' ? 'ข้อมูลการจองย้อนหลังทั้งหมด' : 'Historical booking records across all rooms'}</p>
+                 </div>
+                 <div className="relative w-full sm:w-72">
+                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                    <input
+                       type="text"
+                       placeholder={t.searchPlaceholder}
+                       value={searchTerm}
+                       onChange={(e) => setSearchTerm(e.target.value)}
+                       className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
+                    />
+                 </div>
+              </div>
+              <div className="overflow-x-auto max-h-[520px]">
+                 <table className="w-full text-sm text-left">
+                    <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 sticky top-0">
+                       <tr>
+                          <th className="px-5 py-3">{t.room}</th>
+                          <th className="px-5 py-3">{t.dateTimeCol}</th>
+                          <th className="px-5 py-3">{t.eventCol}</th>
+                          <th className="px-5 py-3">{t.userCol}</th>
+                          <th className="px-5 py-3">{t.status}</th>
+                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-medium">
+                       {bookingHistory.length === 0 ? (
+                          <tr>
+                             <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">{t.noBookingsTable}</td>
+                          </tr>
+                       ) : bookingHistory.map(booking => {
+                          const displayState = getAdminBookingDisplayState(booking);
+                          return (
+                             <tr key={booking.id} className="hover:bg-slate-50 transition-colors">
+                                <td className="px-5 py-3">
+                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">{getRoomName(booking.roomId)}</span>
+                                </td>
+                                <td className="px-5 py-3">
+                                   <div className="font-semibold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                   <div className="text-slate-500 text-xs font-semibold font-mono mt-0.5">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
+                                </td>
+                                <td className="px-5 py-3 font-semibold text-slate-800">{translateText(booking.title, language)}</td>
+                                <td className="px-5 py-3 text-slate-500">
+                                   <div className="font-semibold">{booking.organizer}</div>
+                                   <div className="text-xs text-slate-400">{booking.employeeId || 'N/A'} · {booking.department ? translateText(booking.department, language) : '-'}</div>
+                                </td>
+                                <td className="px-5 py-3">
+                                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                                </td>
+                             </tr>
+                          );
+                       })}
+                    </tbody>
+                 </table>
               </div>
            </div>
         </div>
@@ -1536,6 +1659,161 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </table>
                 </div>
           </div>
+      )}
+
+      {/* Edit Booking Modal */}
+      {editingBooking && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[calc(100vh-2rem)] animate-in fade-in zoom-in duration-200 overflow-hidden">
+            <form onSubmit={handleBookingEditSubmit} className="flex max-h-[calc(100vh-2rem)] flex-col">
+              <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-100">
+                <h3 className="text-lg font-bold text-slate-900">{language === 'th' ? 'แก้ไขรายการจอง' : 'Edit Booking'}</h3>
+                <button type="button" onClick={() => setEditingBooking(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.room}</label>
+                    <select
+                      value={bookingEditForm.roomId}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, roomId: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                    >
+                      {sortedRooms.map(room => (
+                        <option key={room.id} value={room.id}>{room.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.status}</label>
+                    <select
+                      value={bookingEditForm.status}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, status: e.target.value as BookingStatus })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                    >
+                      <option value={BookingStatus.CONFIRMED}>{t.confirmed}</option>
+                      <option value={BookingStatus.PENDING}>{t.pendingApproval}</option>
+                      <option value={BookingStatus.VERIFIED}>{t.verified}</option>
+                      <option value={BookingStatus.REJECTED}>{t.rejected}</option>
+                      <option value={BookingStatus.NO_SHOW}>{t.cancelledNoVerification}</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t.bookingTitle}</label>
+                  <input
+                    required
+                    type="text"
+                    value={bookingEditForm.title}
+                    onChange={(e) => setBookingEditForm({ ...bookingEditForm, title: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.organizerName}</label>
+                    <input
+                      required
+                      type="text"
+                      value={bookingEditForm.organizer}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, organizer: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.employeeId}</label>
+                    <input
+                      required
+                      type="text"
+                      value={bookingEditForm.employeeId}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, employeeId: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.department}</label>
+                    <select
+                      value={bookingEditForm.department}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, department: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                    >
+                      <option value="">{t.selectDeptOption}</option>
+                      {DEPARTMENTS.map(dept => (
+                        <option key={dept} value={dept}>{translateText(dept, language)}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.deskPhone}</label>
+                    <input
+                      type="text"
+                      value={bookingEditForm.deskNumber}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, deskNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.dateTimeCol}</label>
+                    <input
+                      required
+                      type="date"
+                      value={bookingEditForm.date}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, date: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'เวลาเริ่ม' : 'Start Time'}</label>
+                    <select
+                      value={bookingEditForm.startHour}
+                      onChange={(e) => {
+                        const startHour = Number(e.target.value);
+                        setBookingEditForm({ ...bookingEditForm, startHour, endHour: bookingEditForm.endHour <= startHour ? Math.min(startHour + 1, BOOKING_END_HOUR) : bookingEditForm.endHour });
+                      }}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                    >
+                      {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR).map(hour => (
+                        <option key={hour} value={hour}>{String(hour).padStart(2, '0')}:00</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'เวลาสิ้นสุด' : 'End Time'}</label>
+                    <select
+                      value={bookingEditForm.endHour}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, endHour: Number(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                    >
+                      {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR + 1).map(hour => (
+                        <option key={hour} value={hour} disabled={hour <= bookingEditForm.startHour}>{String(hour).padStart(2, '0')}:00</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-shrink-0 justify-end space-x-3 p-6 border-t border-slate-100 bg-slate-50">
+                <button type="button" onClick={() => setEditingBooking(null)} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-200 rounded-lg transition-colors">
+                  {t.cancel}
+                </button>
+                <button type="submit" className="px-6 py-2 bg-brand-500 text-white font-bold rounded-lg hover:bg-brand-600 transition-colors shadow-sm">
+                  {t.save}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Add/Edit Room Modal */}
