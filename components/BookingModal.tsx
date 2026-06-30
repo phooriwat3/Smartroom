@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Room, Booking, BookingStatus } from '../types';
 import { X, Calendar, Clock, User, AlertCircle, Building2, IdCard, Trash2 } from 'lucide-react';
-import { TRANSLATIONS, formatDate, formatTimeValue, translateText, isRoomClosedAt } from '../translations';
+import { TRANSLATIONS, formatDate, formatTimeValue, translateText, isRoomClosedAt, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import { getBookingDepartmentClass } from '../bookingVisualStyles';
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 
@@ -334,7 +334,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                         : isSelected
                                             ? (language === 'th' ? 'คลิกซ้ำเพื่อยกเลิกการเลือก' : 'Click again to deselect')
                                             : booking
-                                                ? `${language === 'th' ? 'จองแล้ว:' : 'Booked:'} ${translateText(booking.title, language)} (${booking.organizer} - ${booking.department})`
+                                                ? `${language === 'th' ? 'จองแล้ว:' : 'Booked:'} ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'})`
                                                 : (language === 'th' ? 'คลิกเพื่อเลือกจับจองช่วงเวลานี้' : 'Click to select this slot')
                                 }
                            >
@@ -477,8 +477,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                 className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent appearance-none bg-white font-medium"
                             >
                                 <option value="" disabled>{t.selectDeptOption}</option>
-                                {DEPARTMENTS.map(dept => (
-                                    <option key={dept} value={dept}>{dept}</option>
+                                {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                                    <option key={value} value={value}>{label}</option>
                                 ))}
                             </select>
                         </div>

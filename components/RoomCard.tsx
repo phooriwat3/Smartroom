@@ -3,6 +3,7 @@ import { Room, Booking, BookingStatus } from '../types';
 import { Users, Monitor, CalendarPlus } from 'lucide-react';
 import { TRANSLATIONS, formatTimeString, translateText, isRoomClosedAt, isRoomCurrentlyClosed } from '../translations';
 import { BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
+import { BookingDisplayState, getBookingDisplayState as getSharedBookingDisplayState } from '../utils/bookingStatus';
 
 interface RoomCardProps {
   room: Room;
@@ -11,8 +12,6 @@ interface RoomCardProps {
   language: 'th' | 'en';
 }
 
-type BookingDisplayState = 'noCheckIn' | 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed';
-
 const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, language }) => {
   const t = TRANSLATIONS[language];
   const now = new Date();
@@ -20,26 +19,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
   const checkInWindowTooltip = language === 'th'
     ? 'Check in ได้ภายใน 15 นาทีก่อนหรือหลังเวลาเริ่มจอง เช่น หากเริ่มเวลา 15:00 น. สามารถ Check in ได้ตั้งแต่ 14:45 น. ถึง 15:15 น.'
     : 'Check in within 15 minutes before or after the booking start time. For example, if the booking starts at 3:00 PM, check-in is allowed from 2:45 PM to 3:15 PM.';
-  const isNoCheckIn = (booking: Booking) => booking.status === BookingStatus.NO_SHOW;
-  const getBookingDisplayState = (booking: Booking): BookingDisplayState => {
-    if (isNoCheckIn(booking)) return 'noCheckIn';
-    if (booking.status === BookingStatus.PENDING) return 'pending';
-    if (booking.actualEndTime) return 'used';
-
-    const nowTime = now.getTime();
-    const startTime = booking.startTime.getTime();
-    const endTime = booking.endTime.getTime();
-    const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
-
-    if (hasVerifiedOrStarted) {
-      if (nowTime > endTime) return 'used';
-      if (nowTime >= startTime && nowTime <= endTime) return 'roomInUse';
-      return 'verified';
-    }
-
-    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
-    return 'confirmed';
-  };
+  const getBookingDisplayState = (booking: Booking): BookingDisplayState => getSharedBookingDisplayState(booking, now);
 
   const getBookingDisplayLabel = (booking: Booking) => {
     const state = getBookingDisplayState(booking);
@@ -62,17 +42,6 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
     return 'bg-emerald-100 text-emerald-700';
   };
 
-  // Find current active booking (ignore rejected)
-  const currentBooking = currentBookings.find(booking =>
-    booking.roomId === room.id &&
-    now >= booking.startTime &&
-    now <= booking.endTime &&
-    booking.status !== BookingStatus.REJECTED &&
-    !isNoCheckIn(booking)
-  );
-
-  const isOccupied = !!currentBooking;
-  const isPending = currentBooking?.status === BookingStatus.PENDING;
 
   // Get upcoming bookings for this room TODAY only (Exclude rejected)
   const todaysBookings = currentBookings

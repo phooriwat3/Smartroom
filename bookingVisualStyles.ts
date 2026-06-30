@@ -1,6 +1,6 @@
-const normalizeDepartment = (department?: string) => department?.trim().toLowerCase() || '';
+import { formatDepartment } from './translations';
 
-export const isItBookingDepartment = (department?: string) => normalizeDepartment(department) === 'it';
+export const isItBookingDepartment = (department?: string) => formatDepartment(department) === 'IT';
 
 export const getBookingDepartmentClass = (department?: string) =>
   isItBookingDepartment(department) ? 'booking-it-neon' : '';

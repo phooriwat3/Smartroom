@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { AVAILABLE_ROOMS, INITIAL_BOOKINGS_MOCK, BOOKING_START_HOUR, BOOKING_END_HOUR } from './constants';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { AVAILABLE_ROOMS, INITIAL_BOOKINGS_MOCK, BOOKING_START_HOUR, BOOKING_END_HOUR, APP_BASE_URL } from './constants';
 import { Room, Booking, RoomType, BookingStatus, AdminUser, RoomMaintenanceRecord } from './types';
 import RoomCard from './components/RoomCard';
 import BookingModal from './components/BookingModal';
@@ -15,6 +15,7 @@ import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'fireb
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
+import { isBookingNoCheckIn, isBookingRoomInUse } from './utils/bookingStatus';
 
 type AppView = 'grid' | 'dashboard' | 'admin';
 type RouteMode = 'app' | 'verify';
@@ -700,14 +701,7 @@ const SmartRoomApplication: React.FC = () => {
     navigateToView('admin');
   };
 
-  const isMissedCheckInBooking = (booking: Booking, now: Date) => {
-    if (booking.status === BookingStatus.NO_SHOW || (booking.status as string) === 'MISSED_CHECK_IN') return true;
-    if (booking.status === BookingStatus.REJECTED || booking.status === BookingStatus.VERIFIED) return false;
-    if (booking.actualStartTime) return false;
-
-    const cutoffTime = new Date(booking.startTime.getTime() + 15 * 60 * 1000);
-    return now > cutoffTime;
-  };
+  const isMissedCheckInBooking = (booking: Booking, now: Date) => isBookingNoCheckIn(booking, now);
 
   const activeBookings = useMemo(() => (
     bookings.filter(booking => !isMissedCheckInBooking(booking, roomStatusNow))
@@ -1006,7 +1000,7 @@ const SmartRoomApplication: React.FC = () => {
     const response = await sendEmail({
       bookingId,
       email: email!.trim().toLowerCase(),
-      origin: window.location.origin,
+      appUrl: APP_BASE_URL,
     });
     return response.data as {
       bookingId?: string;
@@ -1243,9 +1237,7 @@ const SmartRoomApplication: React.FC = () => {
       if (isRoomCurrentlyClosed(r, roomStatusNow)) return false;
       return !activeBookings.some(b =>
         b.roomId === r.id &&
-        roomStatusNow >= b.startTime &&
-        roomStatusNow <= b.endTime &&
-        b.status !== BookingStatus.REJECTED
+        isBookingRoomInUse(b, roomStatusNow)
       )
     }).length
   };

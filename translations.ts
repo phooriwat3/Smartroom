@@ -656,6 +656,76 @@ export const TRANSLATE_MAP: Record<string, string> = {
   'System Maintenance': 'ซ่อมบำรุงระบบเครือข่ายและไอที'
 };
 
+const DEPARTMENT_CANONICAL_CODES: Record<string, string> = {
+  'Managing Director': 'MD',
+  HR: 'HR',
+  SUSTAINABILITY: 'SUST',
+  'Fin&Acc': 'FA',
+  Planning: 'PLN',
+  Procurement: 'PROC',
+  'Prod Eng': 'PE',
+  Technology: 'IT',
+  'Information Technology': 'IT',
+  IT: 'IT',
+  'Equipment Engineering': 'EE',
+  Facility: 'FAC',
+  Facilities: 'FAC',
+  QA: 'QA',
+  'TA MFG': 'TA MFG',
+  SC: 'SC'
+};
+
+const DEPARTMENT_ALIAS_CODES: Record<string, string> = {
+  md: 'MD',
+  fa: 'FA',
+  finance: 'FA',
+  accounting: 'FA',
+  'fin & acc': 'FA',
+  'production engineering': 'PE',
+  'quality assurance': 'QA',
+  manufacturing: 'TA MFG',
+  'supply chain': 'SC',
+  '\u0E01\u0E23\u0E23\u0E21\u0E01\u0E32\u0E23\u0E1C\u0E08\u0E14\u0E01\u0E32\u0E23': 'MD',
+  '\u0E40\u0E17\u0E04\u0E42\u0E19\u0E42\u0E25\u0E22\u0E2A\u0E32\u0E23\u0E2A\u0E19\u0E40\u0E17\u0E28': 'IT'
+};
+
+export const DEPARTMENT_DISPLAY_CODES: Record<string, string> = Object.entries(DEPARTMENT_CANONICAL_CODES).reduce(
+  (aliases, [department, code]) => {
+    aliases[department.toLowerCase()] = code;
+
+    const translatedDepartment = TRANSLATE_MAP[department];
+    if (translatedDepartment) {
+      aliases[translatedDepartment.toLowerCase()] = code;
+    }
+
+    return aliases;
+  },
+  { ...DEPARTMENT_ALIAS_CODES }
+);
+
+export const formatDepartment = (department?: string | null): string => {
+  const cleanDepartment = (department || '').trim();
+  if (!cleanDepartment) return '';
+  return DEPARTMENT_DISPLAY_CODES[cleanDepartment.toLowerCase()] || cleanDepartment.toUpperCase();
+};
+
+export const getDepartmentSelectOptions = (departments: string[]) => {
+  const options = new Map<string, string>();
+
+  departments.forEach((department) => {
+    const label = formatDepartment(department);
+    if (!label) return;
+
+    const currentValue = options.get(label);
+    const isCodeValue = department.trim().toUpperCase() === label;
+    if (!currentValue || isCodeValue) {
+      options.set(label, department);
+    }
+  });
+
+  return Array.from(options, ([label, value]) => ({ label, value }));
+};
+
 export const translateText = (text: string, language: 'th' | 'en'): string => {
   if (language === 'en' || !text) return text;
   return TRANSLATE_MAP[text] || TRANSLATE_MAP[text.trim()] || text;

@@ -1,4 +1,4 @@
-const crypto = require("crypto");
+﻿const crypto = require("crypto");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
@@ -24,7 +24,12 @@ const EMAIL_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 const CHECK_IN_WINDOW_BEFORE_MS = 15 * 60 * 1000;
 const CHECK_IN_WINDOW_AFTER_MS = 15 * 60 * 1000;
 const POWER_AUTOMATE_VERIFICATION_FLOW_URL = defineSecret("POWER_AUTOMATE_VERIFICATION_FLOW_URL");
-const APP_BASE_URL = process.env.APP_BASE_URL || "";
+const DEFAULT_APP_BASE_URL = "https://tokinsmartroom-495306.web.app";
+const LEGACY_APP_BASE_URLS = new Set([
+  "https://tokinsmartroom.web.app",
+  "https://sutsmartbus-495306.web.app",
+]);
+const APP_BASE_URL = getConfiguredAppBaseUrl();
 const APP_CORS_ORIGINS = [
   /^http:\/\/localhost:\d+$/,
   /^http:\/\/127\.0\.0\.1:\d+$/,
@@ -44,6 +49,27 @@ const EMAIL_HTTPS_OPTIONS = {
   ...APP_HTTPS_OPTIONS,
   secrets: [POWER_AUTOMATE_VERIFICATION_FLOW_URL],
 };
+
+function isLocalOrLegacyAppUrl(value) {
+  try {
+    const url = new URL(value);
+    const hostname = url.hostname.toLowerCase();
+    return url.protocol !== "https:" ||
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[0-1])\./.test(hostname) ||
+      LEGACY_APP_BASE_URLS.has(url.origin);
+  } catch (error) {
+    return true;
+  }
+}
+
+function getConfiguredAppBaseUrl() {
+  const configuredUrl = (process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || DEFAULT_APP_BASE_URL).trim().replace(/\/+$/, "");
+  return isLocalOrLegacyAppUrl(configuredUrl) ? DEFAULT_APP_BASE_URL : configuredUrl;
+}
 
 function getYageoEmailDomain() {
   return (process.env.YAGEO_EMAIL_DOMAIN || DEFAULT_YAGEO_EMAIL_DOMAIN).toLowerCase();
@@ -173,24 +199,8 @@ async function archiveMissedCheckInById(bookingId) {
   return archived;
 }
 
-function getOriginFromCallable(request, explicitOrigin) {
-  if (APP_BASE_URL) {
-    return APP_BASE_URL;
-  }
-
-  if (typeof explicitOrigin === "string" && explicitOrigin.trim()) {
-    return explicitOrigin.trim();
-  }
-
-  const rawOrigin = request.rawRequest &&
-    request.rawRequest.headers &&
-    request.rawRequest.headers.origin;
-
-  if (typeof rawOrigin === "string" && rawOrigin.trim()) {
-    return rawOrigin.trim();
-  }
-
-  return "";
+function getOriginFromCallable() {
+  return APP_BASE_URL;
 }
 
 function buildVerifyUrl(origin, bookingId, token) {
@@ -202,6 +212,24 @@ function buildVerifyUrl(origin, bookingId, token) {
   url.searchParams.set("bookingId", bookingId);
   url.searchParams.set("token", token);
   return url.toString();
+}
+
+function canonicalizeVerifyUrl(value, bookingId) {
+  const rawUrl = typeof value === "string" && value.trim() ? value.trim() : "";
+  if (!rawUrl) {
+    throw new HttpsError("failed-precondition", "Verification URL is missing.");
+  }
+
+  try {
+    const url = new URL(rawUrl);
+    const token = url.searchParams.get("token");
+    if (!token) {
+      throw new Error("Verification token is missing.");
+    }
+    return buildVerifyUrl(APP_BASE_URL, bookingId, token);
+  } catch (error) {
+    throw new HttpsError("failed-precondition", "Verification URL is invalid.");
+  }
 }
 
 function serializeDate(value) {
@@ -468,12 +496,7 @@ async function dispatchVerificationEmailForBooking(bookingId, booking) {
     throw new HttpsError("failed-precondition", "Booking email is missing.");
   }
 
-  const verifyUrl = typeof booking.verifyUrl === "string" && booking.verifyUrl.trim()
-    ? booking.verifyUrl.trim()
-    : null;
-  if (!verifyUrl) {
-    throw new HttpsError("failed-precondition", "Verification URL is missing.");
-  }
+  const verifyUrl = canonicalizeVerifyUrl(booking.verifyUrl, bookingId);
 
   const emailPayload = buildVerificationEmailPayload(email, bookingId, verifyUrl, booking);
   const roomName = await getRoomName(booking.roomId);
@@ -495,6 +518,7 @@ async function dispatchVerificationEmailForBooking(bookingId, booking) {
       db.collection("bookings").doc(bookingId).update({
         verificationEmailStatus: "failed",
         verificationEmailFailedAt: FieldValue.serverTimestamp(),
+        verifyUrl,
       }),
       recordEmailSentHistory({
         ...historyBase,
@@ -510,6 +534,7 @@ async function dispatchVerificationEmailForBooking(bookingId, booking) {
     db.collection("bookings").doc(bookingId).update({
       verificationEmailStatus: "sent",
       verificationEmailSentAt: FieldValue.serverTimestamp(),
+      verifyUrl,
     }),
     recordEmailSentHistory({
       ...historyBase,
@@ -1073,7 +1098,7 @@ exports.sendBookingVerificationEmail = onCall(EMAIL_HTTPS_OPTIONS, async (reques
     const token = createToken();
     const tokenHash = hashToken(token);
     const tokenExpiresAt = getTokenExpiresAt(booking);
-    const verifyUrl = buildVerifyUrl(getOriginFromCallable(request, data.origin), bookingId, token);
+    const verifyUrl = buildVerifyUrl(getOriginFromCallable(), bookingId, token);
     const windowStart = checkInWindow.window.opensAt;
     const windowEnd = checkInWindow.window.closesAt;
     const shouldSendNow = checkInWindow.state === "active";

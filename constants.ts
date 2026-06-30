@@ -1,5 +1,8 @@
 import { Room, RoomType, BookingStatus, AdminUser } from './types';
 
+export const CANONICAL_APP_URL = 'https://tokinsmartroom-495306.web.app';
+export const APP_BASE_URL = ((import.meta as any).env?.VITE_APP_URL || CANONICAL_APP_URL).replace(/\/+$/, '');
+
 export const BOOKING_START_HOUR = 7;
 export const BOOKING_END_HOUR = 19;
 export const BOOKABLE_HOURS = Array.from(

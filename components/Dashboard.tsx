@@ -22,11 +22,12 @@ import {
   Trash2,
   CheckCircle
 } from 'lucide-react';
-import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay } from '../translations';
+import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import { getBookingDepartmentClass } from '../bookingVisualStyles';
 import CheckInValidationModal from './CheckInValidationModal';
 
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR, DEPARTMENTS } from '../constants';
+import { BookingDisplayState, getBookingDisplayState as getSharedBookingDisplayState, isBookingNoCheckIn } from '../utils/bookingStatus';
 
 interface DashboardProps {
   rooms: Room[];
@@ -254,34 +255,9 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
-  const isNoCheckIn = (b: Booking) => {
-    if (b.status === BookingStatus.NO_SHOW) return true;
-    if (b.status !== BookingStatus.CONFIRMED || b.actualStartTime) return false;
-    const cutoffTime = new Date(b.startTime.getTime() + 15 * 60 * 1000);
-    return liveTime > cutoffTime;
-  };
+  const isNoCheckIn = (b: Booking) => isBookingNoCheckIn(b, liveTime);
 
-  type BookingDisplayState = 'noCheckIn' | 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed';
-
-  const getBookingDisplayState = (booking: Booking): BookingDisplayState => {
-    if (isNoCheckIn(booking)) return 'noCheckIn';
-    if (booking.status === BookingStatus.PENDING) return 'pending';
-    if (booking.actualEndTime) return 'used';
-
-    const nowTime = liveTime.getTime();
-    const startTime = booking.startTime.getTime();
-    const endTime = booking.endTime.getTime();
-    const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
-
-    if (hasVerifiedOrStarted) {
-      if (nowTime > endTime) return 'used';
-      if (nowTime >= startTime && nowTime <= endTime) return 'roomInUse';
-      return 'verified';
-    }
-
-    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
-    return 'confirmed';
-  };
+  const getBookingDisplayState = (booking: Booking): BookingDisplayState => getSharedBookingDisplayState(booking, liveTime);
 
   const getBookingDisplayLabel = (booking: Booking) => {
     const state = getBookingDisplayState(booking);
@@ -342,17 +318,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     nowTime: Date
   ) => {
     const roomBookings = todaysBookings.filter(b => b.roomId === room.id);
-    const activeBooking = isTodayFlag ? roomBookings.find(b => {
-      const start = new Date(b.startTime);
-      const end = new Date(b.endTime);
-      return nowTime >= start && nowTime <= end && b.status !== BookingStatus.REJECTED && !isNoCheckIn(b);
-    }) : undefined;
+    const activeBooking = isTodayFlag ? roomBookings.find(b => (
+      getSharedBookingDisplayState(b, nowTime) === 'roomInUse'
+    )) : undefined;
 
-    const pendingBooking = isTodayFlag ? roomBookings.find(b => {
-      const start = new Date(b.startTime);
-      const end = new Date(b.endTime);
-      return nowTime >= start && nowTime <= end && b.status === BookingStatus.PENDING;
-    }) : undefined;
+    const pendingBooking = isTodayFlag ? roomBookings.find(b => (
+      getSharedBookingDisplayState(b, nowTime) === 'pending' &&
+      nowTime >= b.startTime &&
+      nowTime <= b.endTime
+    )) : undefined;
 
     return {
       todaysBookings: roomBookings,
@@ -1015,19 +989,17 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <User className="w-2.5 h-2.5 mr-1 text-slate-400" />
                                         <span>{b.organizer}</span>
                                       </div>
-                                      {noCheckIn ? (
-                                        <span title={checkInWindowTooltip} className="text-[9px] bg-rose-100 border border-rose-200 text-rose-700 px-1.5 py-0.5 rounded font-bold">{language === 'th' ? 'ไม่มา Check-in' : 'No Check-in'}</span>
-                                      ) : b.actualStartTime ? (
-                                        b.actualEndTime ? (
-                                          <span className="text-[9px] bg-slate-100 border border-slate-200 text-slate-500 px-1.5 py-0.5 rounded font-bold">{language === 'th' ? 'เช็คเอาท์แล้ว' : 'Checked out'}</span>
-                                        ) : (
-                                          <span title={checkInWindowTooltip} className="text-[9px] bg-blue-50 border border-blue-200 text-blue-700 px-1.5 py-0.5 rounded font-bold animate-pulse">{language === 'th' ? 'กำลังใช้งาน' : 'Room In Use'}</span>
-                                        )
-                                      ) : b.status === BookingStatus.PENDING ? (
-                                        <span className="text-[9px] bg-amber-50 border border-amber-200 text-amber-700 px-1.5 py-0.5 rounded font-bold">{t.pendingApproval}</span>
-                                      ) : (
-                                        <span className="text-[9px] bg-emerald-50 border border-emerald-250/60 text-emerald-700 px-1.5 py-0.5 rounded font-bold">{t.confirmed}</span>
-                                      )}
+                                      {(() => {
+                                        const displayState = getBookingDisplayState(b);
+                                        return (
+                                          <span
+                                            title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${getBookingStatusBadgeClass(displayState)}`}
+                                          >
+                                            {getBookingDisplayLabel(b)}
+                                          </span>
+                                        );
+                                      })()}
                                     </div>
                                   </div>
                                 );
@@ -1144,7 +1116,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                             : 'bg-orange-100 border-orange-300 text-orange-950'
                                         }
                                       `}
-                                        title={`${translateText(booking.title, language)} (${booking.organizer} - ${booking.department}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
+                                        title={`${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
                                         <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
                                           {getBookingDisplayLabel(booking)}
@@ -1153,7 +1125,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
                                         </div>
                                         <div className="truncate text-[10px] text-slate-600 w-full">
-                                          {booking.department || '-'}
+                                          {formatDepartment(booking.department) || '-'}
                                         </div>
                                         <div className="truncate text-[10px] text-slate-600 w-full">
                                           {booking.deskNumber || '-'}
@@ -1517,7 +1489,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/70 text-slate-400 ring-1 ring-slate-200/60">
                                   <Building2 className="h-3.5 w-3.5 opacity-50" />
                                 </span>
-                                <span className="truncate text-[13px] font-bold text-slate-700">{b.department || '-'}</span>
+                                <span className="truncate text-[13px] font-bold text-slate-700">{formatDepartment(b.department) || '-'}</span>
                               </div>
                               <div className="flex min-w-0 items-center gap-2 pl-1">
                                 <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white/70 text-slate-400 ring-1 ring-slate-200/60">
@@ -1689,8 +1661,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-semibold text-slate-800"
                   >
                     <option value="">-- {t.selectDept} --</option>
-                    {DEPARTMENTS.map(dept => (
-                      <option key={dept} value={dept}>{dept}</option>
+                    {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
                     ))}
                   </select>
                 </div>

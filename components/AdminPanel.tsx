@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw } from 'lucide-react';
-import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed } from '../translations';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download } from 'lucide-react';
+import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
 import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firestore';
 import { signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
@@ -42,6 +42,7 @@ interface AdminPanelProps {
 }
 
 type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected';
+
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   rooms, 
@@ -551,13 +552,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     date.getFullYear() === compareDate.getFullYear()
   );
 
-  const bookingMatchesSearch = (b: Booking) => (
-    b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.organizer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (b.department && b.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (b.employeeId && b.employeeId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    getRoomName(b.roomId).toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const bookingMatchesSearch = (b: Booking) => {
+    const normalizedSearchTerm = searchTerm.toLowerCase();
+    const departmentDisplayName = formatDepartment(b.department).toLowerCase();
+
+    return (
+      b.title.toLowerCase().includes(normalizedSearchTerm) ||
+      b.organizer.toLowerCase().includes(normalizedSearchTerm) ||
+      (b.department && b.department.toLowerCase().includes(normalizedSearchTerm)) ||
+      departmentDisplayName.includes(normalizedSearchTerm) ||
+      (b.employeeId && b.employeeId.toLowerCase().includes(normalizedSearchTerm)) ||
+      getRoomName(b.roomId).toLowerCase().includes(normalizedSearchTerm)
+    );
+  };
 
   const todayBookings = useMemo(() => {
     const today = new Date();
@@ -684,6 +691,68 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       return bucket === 2 ? b.startTime.getTime() - a.startTime.getTime() : a.startTime.getTime() - b.startTime.getTime();
     });
 
+  const formatCsvDateTime = (date?: Date) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
+  const escapeCsvValue = (value: string | number | null | undefined) => {
+    const stringValue = value === null || value === undefined ? '' : String(value);
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  };
+
+  const handleExportBookingHistoryCsv = () => {
+    const headers = [
+      'Booking ID',
+      'Room',
+      'Title',
+      'Organizer',
+      'Employee ID',
+      'Department',
+      'Email',
+      'Start Time',
+      'End Time',
+      'Status',
+      'Desk Number',
+      'Actual Start',
+      'Actual End'
+    ];
+
+    const rows = bookingHistory.map(booking => [
+      booking.id,
+      getRoomName(booking.roomId),
+      translateText(booking.title, language),
+      booking.organizer,
+      booking.employeeId,
+      formatDepartment(booking.department),
+      booking.email || '',
+      formatCsvDateTime(booking.startTime),
+      formatCsvDateTime(booking.endTime),
+      getAdminBookingStatusLabel(booking),
+      booking.deskNumber || '',
+      formatCsvDateTime(booking.actualStartTime),
+      formatCsvDateTime(booking.actualEndTime)
+    ]);
+
+    const csvContent = '\uFEFF' + [headers, ...rows]
+      .map(row => row.map(escapeCsvValue).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `booking_history_${getDateInputValue(new Date())}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
 
   const openEditBookingModal = (booking: Booking) => {
@@ -1151,7 +1220,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     </div>
                                     <div className="flex items-center text-xs text-slate-400">
                                         <Building2 className="w-3 h-3 mr-1.5" />
-                                        {booking.department ? translateText(booking.department, language) : '-'}
+                                        {formatDepartment(booking.department) || '-'}
                                     </div>
                                     {booking.deskNumber && (
                                         <div className="flex items-center text-xs text-slate-400">
@@ -1275,7 +1344,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
                     <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
-                       {analyticsData.departmentData[0] ? analyticsData.departmentData[0].name : t.none}
+                       {analyticsData.departmentData[0] ? formatDepartment(analyticsData.departmentData[0].name) : t.none}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
                  </div>
@@ -1334,7 +1403,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="flex justify-between items-center text-xs font-bold text-slate-707">
                                    <span className="flex items-center">
                                       <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
-                                      {translateText(dept.name, language)}
+                                      {formatDepartment(dept.name)}
                                    </span>
                                    <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.pct}%)</span>
                                 </div>
@@ -1378,7 +1447,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                        />
                     </div>
                  </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-[180px_220px_auto] gap-2 items-end">
+                 <div className="grid grid-cols-1 sm:grid-cols-[180px_220px_minmax(0,1fr)_auto] gap-2 items-end">
                     <div>
                        <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</label>
                        <select
@@ -1407,50 +1476,78 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="text-xs font-bold text-slate-500 pb-2">
                        {historyFilterMode === 'all' ? (language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates') : (formatDateInputDisplay(historyFilterDate) || '-')}
                     </div>
+                    <button
+                       type="button"
+                       onClick={handleExportBookingHistoryCsv}
+                       className="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+                    >
+                       <Download className="w-4 h-4 mr-2" />
+                       {language === 'th' ? '\u0E2A\u0E48\u0E07\u0E2D\u0E2D\u0E01 CSV' : 'Export CSV'}
+                    </button>
                  </div>
               </div>
               <div className="overflow-x-auto max-h-[520px]">
-                 <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200 sticky top-0">
+                 <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
+                    <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[11px] font-bold uppercase tracking-wider text-slate-500 backdrop-blur">
                        <tr>
-                          <th className="px-5 py-3">{t.room}</th>
-                          <th className="px-5 py-3">{t.dateTimeCol}</th>
+                          <th className="w-[150px] px-5 py-3">{t.room}</th>
+                          <th className="w-[170px] px-5 py-3">{t.dateTimeCol}</th>
                           <th className="px-5 py-3">{t.eventCol}</th>
-                          <th className="px-5 py-3">{t.userCol}</th>
-                          <th className="px-5 py-3">{t.status}</th>
-                          <th className="px-5 py-3 text-right">{t.actionsCol}</th>
+                          <th className="w-[170px] px-5 py-3">{t.organizerName}</th>
+                          <th className="w-[135px] px-5 py-3">{t.employeeId}</th>
+                          <th className="w-[110px] px-5 py-3">{t.department}</th>
+                          <th className="w-[100px] px-5 py-3">{t.deskShort}</th>
+                          <th className="w-[150px] px-5 py-3">{t.status}</th>
+                          <th className="w-[96px] px-5 py-3 text-right">{t.actionsCol}</th>
                        </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
+                    <tbody className="divide-y divide-slate-100 bg-white font-medium">
                        {bookingHistory.length === 0 ? (
                           <tr>
-                             <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">{t.noBookingsTable}</td>
+                             <td colSpan={9} className="px-6 py-10 text-center text-sm font-semibold text-slate-400">{t.noBookingsTable}</td>
                           </tr>
                        ) : bookingHistory.map(booking => {
                           const displayState = getAdminBookingDisplayState(booking);
+                          const departmentDisplayName = formatDepartment(booking.department);
                           return (
-                             <tr key={booking.id} className="hover:bg-slate-50 transition-colors">
-                                <td className="px-5 py-3">
-                                   <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">{getRoomName(booking.roomId)}</span>
+                             <tr key={booking.id} className="group transition-colors hover:bg-indigo-50/30">
+                                <td className="px-5 py-4 align-top">
+                                   <span className="inline-flex max-w-full items-center truncate rounded-md border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700" title={getRoomName(booking.roomId)}>{getRoomName(booking.roomId)}</span>
                                 </td>
-                                <td className="px-5 py-3">
-                                   <div className="font-semibold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                                   <div className="text-slate-500 text-xs font-semibold font-mono mt-0.5">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
+                                <td className="px-5 py-4 align-top">
+                                   <div className="font-bold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                   <div className="mt-1 font-mono text-xs font-semibold text-slate-500">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
                                 </td>
-                                <td className="px-5 py-3 font-semibold text-slate-800">{translateText(booking.title, language)}</td>
-                                <td className="px-5 py-3 text-slate-500">
-                                   <div className="font-semibold">{booking.organizer}</div>
-                                   <div className="text-xs text-slate-400">{booking.employeeId || 'N/A'} · {booking.department ? translateText(booking.department, language) : '-'}</div>
+                                <td className="px-5 py-4 align-top">
+                                   <div className="truncate font-bold text-slate-800" title={translateText(booking.title, language)}>{translateText(booking.title, language)}</div>
+                                   <div className="mt-1 truncate font-mono text-[11px] text-slate-400" title={booking.id}>{booking.id}</div>
                                 </td>
-                                <td className="px-5 py-3">
-                                   <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                                <td className="px-5 py-4 align-top text-slate-600">
+                                   <div className="truncate font-bold text-slate-800" title={booking.organizer || '-'}>{booking.organizer || '-'}</div>
+                                   {booking.email && <div className="mt-1 truncate text-xs font-semibold text-slate-400" title={booking.email}>{booking.email}</div>}
                                 </td>
-                                <td className="px-5 py-3 text-right">
-                                   <div className="flex items-center justify-end space-x-2">
+                                <td className="px-5 py-4 align-top">
+                                   <span className="font-mono text-xs font-bold text-slate-600">{booking.employeeId || '-'}</span>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <span className="inline-flex min-w-10 items-center justify-center rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 font-mono text-xs font-bold uppercase text-indigo-700">{departmentDisplayName || '-'}</span>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   {booking.deskNumber ? (
+                                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-bold text-slate-600">{booking.deskNumber}</span>
+                                   ) : (
+                                      <span className="text-sm font-semibold text-slate-300">-</span>
+                                   )}
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${getAdminBookingStatusClass(displayState)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                                </td>
+                                <td className="px-5 py-4 text-right align-top">
+                                   <div className="flex items-center justify-end space-x-1.5">
                                       {onUpdateBooking && (
                                          <button
                                             onClick={() => openEditBookingModal(booking)}
-                                            className="text-slate-400 hover:text-brand-600 hover:bg-brand-50 p-2 rounded-lg transition-all"
+                                            className="rounded-lg p-2 text-slate-400 transition-all hover:bg-brand-50 hover:text-brand-600"
                                             title={t.edit}
                                          >
                                             <Edit className="w-4 h-4" />
@@ -1458,7 +1555,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                       )}
                                       <button
                                          onClick={() => onDeleteBooking(booking.id)}
-                                         className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
+                                         className="rounded-lg p-2 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600"
                                          title={t.deleteButton}
                                       >
                                          <Trash2 className="w-4 h-4" />
@@ -1837,8 +1934,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
                     >
                       <option value="">{t.selectDeptOption}</option>
-                      {DEPARTMENTS.map(dept => (
-                        <option key={dept} value={dept}>{translateText(dept, language)}</option>
+                      {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
                       ))}
                     </select>
                   </div>
@@ -2311,8 +2408,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 onChange={(e) => setNewUserForm({...newUserForm, department: e.target.value})}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
                             >
-                                {DEPARTMENTS.map(d => (
-                                    <option key={d} value={d}>{translateText(d, language)}</option>
+                                {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                                    <option key={value} value={value}>{label}</option>
                                 ))}
                             </select>
                         </div>
