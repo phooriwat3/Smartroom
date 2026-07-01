@@ -1283,6 +1283,14 @@ const SmartRoomApplication: React.FC = () => {
     ? effectiveRooms
     : effectiveRooms.filter(room => room.type === filterType);
 
+  const currentActiveFilterType = useMemo(() => {
+    if (selectedRoomId === 'ALL') {
+      return filterType;
+    }
+    const selRoom = effectiveRooms.find(r => r.id === selectedRoomId);
+    return selRoom ? selRoom.type : filterType;
+  }, [selectedRoomId, filterType, effectiveRooms]);
+
   const stats = {
     total: effectiveRooms.length,
     available: effectiveRooms.filter(r => {
@@ -1494,9 +1502,10 @@ const SmartRoomApplication: React.FC = () => {
                   <button
                     onClick={() => {
                       setFilterType('All');
+                      setSelectedRoomId('ALL');
                       setIsMobileDrawerOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === 'All' ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${selectedRoomId === 'ALL' && filterType === 'All' ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
                   >
                     <span>{t.allRoomsSelector}</span>
                     <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.length}</span>
@@ -1504,9 +1513,13 @@ const SmartRoomApplication: React.FC = () => {
                   <button
                     onClick={() => {
                       setFilterType(RoomType.MEETING);
+                      if (selectedRoomId !== 'ALL') {
+                        const firstRoom = effectiveRooms.find(r => r.type === RoomType.MEETING);
+                        if (firstRoom) setSelectedRoomId(firstRoom.id);
+                      }
                       setIsMobileDrawerOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.MEETING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${currentActiveFilterType === RoomType.MEETING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
                   >
                     <span>{t.meetingRoom}</span>
                     <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.MEETING).length}</span>
@@ -1514,9 +1527,13 @@ const SmartRoomApplication: React.FC = () => {
                   <button
                     onClick={() => {
                       setFilterType(RoomType.RECEPTION);
+                      if (selectedRoomId !== 'ALL') {
+                        const firstRoom = effectiveRooms.find(r => r.type === RoomType.RECEPTION);
+                        if (firstRoom) setSelectedRoomId(firstRoom.id);
+                      }
                       setIsMobileDrawerOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.RECEPTION ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${currentActiveFilterType === RoomType.RECEPTION ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
                   >
                     <span>{t.receptionArea}</span>
                     <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.RECEPTION).length}</span>
@@ -1524,9 +1541,13 @@ const SmartRoomApplication: React.FC = () => {
                   <button
                     onClick={() => {
                       setFilterType(RoomType.TRAINING);
+                      if (selectedRoomId !== 'ALL') {
+                        const firstRoom = effectiveRooms.find(r => r.type === RoomType.TRAINING);
+                        if (firstRoom) setSelectedRoomId(firstRoom.id);
+                      }
                       setIsMobileDrawerOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${filterType === RoomType.TRAINING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
+                    className={`w-full text-left px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center justify-between ${currentActiveFilterType === RoomType.TRAINING ? 'text-slate-900 bg-slate-100' : 'text-slate-500 hover:text-slate-900'}`}
                   >
                     <span>{t.trainingRoom}</span>
                     <span className="bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded text-[10px]">{effectiveRooms.filter(r => r.type === RoomType.TRAINING).length}</span>
