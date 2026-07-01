@@ -4,7 +4,8 @@ import { Room, Booking, RoomType, BookingStatus, AdminUser, AdminRole, RoomMaint
 import RoomCard from './components/RoomCard';
 import BookingModal from './components/BookingModal';
 import Dashboard from './components/Dashboard';
-import AdminPanel from './components/AdminPanel';
+import { DashboardSkeleton } from './components/SkeletonLoader';
+const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
 import ConfirmationModal from './components/ConfirmationModal';
 import VerifyBookingPage from './components/VerifyBookingPage';
 import { TRANSLATIONS, getEffectiveRoomStatus, isRoomClosureExpired, isRoomClosedAt, isRoomCurrentlyClosed } from './translations';
@@ -310,6 +311,7 @@ const SmartRoomApplication: React.FC = () => {
     }
     setCurrentView(view);
   };
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [selectedRoomId, setSelectedRoomId] = useState<string>('ALL');
   const [filterType, setFilterType] = useState<string>('All');
   const [preselectedDate, setPreselectedDate] = useState<string | undefined>(undefined);
@@ -460,6 +462,7 @@ const SmartRoomApplication: React.FC = () => {
         } else {
           setRooms([]);
         }
+        setIsInitialLoading(false);
       } else {
         localStorage.setItem('smartroom_rooms_seeded', 'true');
         const loadedRooms: Room[] = [];
@@ -467,6 +470,7 @@ const SmartRoomApplication: React.FC = () => {
           loadedRooms.push(docSnap.data() as Room);
         });
         setRooms(loadedRooms);
+        setIsInitialLoading(false);
       }
     }, (error) => {
       // Firestore rules may not be deployed yet — fall back to local constants
@@ -475,6 +479,7 @@ const SmartRoomApplication: React.FC = () => {
       if (rooms.length === 0) {
         setRooms(AVAILABLE_ROOMS);
       }
+      setIsInitialLoading(false);
     });
 
     return () => unsubscribe();
@@ -569,6 +574,7 @@ const SmartRoomApplication: React.FC = () => {
           } as Booking);
         });
         setBookings(loadedBookings);
+        setIsInitialLoading(false);
       }
     }, (error) => {
       // Firestore rules may not be deployed yet — fall back to seeded local bookings
@@ -587,6 +593,7 @@ const SmartRoomApplication: React.FC = () => {
         } as Booking));
         setBookings(fallbackBookings);
       }
+      setIsInitialLoading(false);
     });
 
     return () => unsubscribe();
@@ -1295,23 +1302,30 @@ const SmartRoomApplication: React.FC = () => {
   if (currentView === 'admin') {
     return (
       <div className="min-h-screen bg-slate-50 p-6 md:p-8 overflow-y-auto">
-        <AdminPanel
-          rooms={effectiveRooms}
-          bookings={activeBookings}
-          onDeleteBooking={handleDeleteBooking}
-          onUpdateBooking={handleUpdateBooking}
-          onApproveBooking={handleApproveBooking}
-          onRejectBooking={handleRejectBooking}
-          onAddRoom={handleAddRoom}
-          onUpdateRoom={handleUpdateRoom}
-          onDeleteRoom={handleDeleteRoom}
-          language={language}
-          setLanguage={setLanguage}
-          showNotification={showNotification}
-          currentUser={adminUser}
-          setCurrentUser={setAdminUser}
-          onBackToUser={handleAdminLogoutToUserEntry}
-        />
+        <React.Suspense fallback={
+          <div className="flex flex-col items-center justify-center min-h-[400px] text-slate-500 font-bold p-8 bg-white border border-slate-200 rounded-2xl shadow-sm">
+            <div className="w-10 h-10 border-4 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+            <span>Loading Admin Panel...</span>
+          </div>
+        }>
+          <AdminPanel
+            rooms={effectiveRooms}
+            bookings={activeBookings}
+            onDeleteBooking={handleDeleteBooking}
+            onUpdateBooking={handleUpdateBooking}
+            onApproveBooking={handleApproveBooking}
+            onRejectBooking={handleRejectBooking}
+            onAddRoom={handleAddRoom}
+            onUpdateRoom={handleUpdateRoom}
+            onDeleteRoom={handleDeleteRoom}
+            language={language}
+            setLanguage={setLanguage}
+            showNotification={showNotification}
+            currentUser={adminUser}
+            setCurrentUser={setAdminUser}
+            onBackToUser={handleAdminLogoutToUserEntry}
+          />
+        </React.Suspense>
         {/* Toast message overlay for admin */}
         {toast.isOpen && (
           <div className="fixed bottom-6 right-6 z-[9999] animate-in fade-in slide-in-from-bottom-5 duration-300">
@@ -1560,16 +1574,20 @@ const SmartRoomApplication: React.FC = () => {
       <main className="flex-1 p-6 pt-20 md:p-8 overflow-y-auto">
 
         {currentView === 'dashboard' && (
-          <Dashboard
-            rooms={filteredRooms}
-            bookings={activeBookings}
-            maintenanceHistory={maintenanceHistory}
-            language={language}
-            onDeleteBooking={handleDeleteBooking}
-            onConfirmBooking={handleConfirmBooking}
-            selectedRoomId={selectedRoomId}
-            setSelectedRoomId={setSelectedRoomId}
-          />
+          isInitialLoading ? (
+            <DashboardSkeleton />
+          ) : (
+            <Dashboard
+              rooms={filteredRooms}
+              bookings={activeBookings}
+              maintenanceHistory={maintenanceHistory}
+              language={language}
+              onDeleteBooking={handleDeleteBooking}
+              onConfirmBooking={handleConfirmBooking}
+              selectedRoomId={selectedRoomId}
+              setSelectedRoomId={setSelectedRoomId}
+            />
+          )
         )}
       </main>
 
@@ -1619,25 +1637,32 @@ const SmartRoomApplication: React.FC = () => {
             className="w-full max-w-sm animate-in zoom-in-95 slide-in-from-bottom-2 duration-200"
             onClick={(event) => event.stopPropagation()}
           >
-            <AdminPanel
-              rooms={effectiveRooms}
-              bookings={activeBookings}
-              onDeleteBooking={handleDeleteBooking}
-              onUpdateBooking={handleUpdateBooking}
-              onApproveBooking={handleApproveBooking}
-              onRejectBooking={handleRejectBooking}
-              onAddRoom={handleAddRoom}
-              onUpdateRoom={handleUpdateRoom}
-              onDeleteRoom={handleDeleteRoom}
-              language={language}
-              setLanguage={setLanguage}
-              showNotification={showNotification}
-              currentUser={null}
-              setCurrentUser={setAdminUser}
-              loginPresentation="modal"
-              onCancelLogin={() => setIsAdminLoginModalOpen(false)}
-              onLoginSuccess={handleAdminLoginSuccessFromUser}
-            />
+            <React.Suspense fallback={
+              <div className="w-full max-w-sm bg-white border border-slate-200 rounded-2xl shadow-xl p-8 flex flex-col items-center justify-center min-h-[300px]">
+                <div className="w-8 h-8 border-3 border-brand-500 border-t-transparent rounded-full animate-spin mb-4"></div>
+                <span className="text-slate-500 font-bold text-sm">Loading Login...</span>
+              </div>
+            }>
+              <AdminPanel
+                rooms={effectiveRooms}
+                bookings={activeBookings}
+                onDeleteBooking={handleDeleteBooking}
+                onUpdateBooking={handleUpdateBooking}
+                onApproveBooking={handleApproveBooking}
+                onRejectBooking={handleRejectBooking}
+                onAddRoom={handleAddRoom}
+                onUpdateRoom={handleUpdateRoom}
+                onDeleteRoom={handleDeleteRoom}
+                language={language}
+                setLanguage={setLanguage}
+                showNotification={showNotification}
+                currentUser={null}
+                setCurrentUser={setAdminUser}
+                loginPresentation="modal"
+                onCancelLogin={() => setIsAdminLoginModalOpen(false)}
+                onLoginSuccess={handleAdminLoginSuccessFromUser}
+              />
+            </React.Suspense>
           </div>
         </div>
       )}

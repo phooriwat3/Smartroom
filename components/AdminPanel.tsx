@@ -8,6 +8,8 @@ import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firesto
 import { signInAnonymously } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType } from '../firebase';
+import { AdminGuideModal } from './admin/AdminGuideModal';
+import { EditBookingModal } from './admin/EditBookingModal';
 
 export const CLOSURE_REASONS = [
   { key: 'Renovation', labelEn: 'Renovation', labelTh: 'ปิดปรับปรุงชั่วคราว' },
@@ -30,52 +32,14 @@ const MONTHS_EN = [
 ];
 
 
-const copyAdminGuide = {
-  en: {
-    title: 'TOKIN Smart Room - Admin Guide & Manual',
-    tabs: {
-      rooms: 'Room Management',
-      bookings: 'Booking Management',
-      users: 'Roles & Settings',
-    },
-    rooms: [
-      ['Adding/Editing Rooms', 'Go to the Rooms tab. Click "Add Room" to create a new room, or click "Edit" on an existing room. You can upload an image, set capacity, select amenities, and save.'],
-      ['Maintenance & Disabling Rooms', 'Edit a room, toggle "Temporarily Disable Room" (ปิดใช้งานห้องชั่วคราว), set the date range, choose a closure reason (e.g. Renovation, AC Maintenance), and save. This automatically prevents users from booking this room during the specified period.'],
-    ],
-    bookings: [
-      ['Approving / Rejecting', 'Review pending bookings under the "Pending Bookings" section or on the room timeline. Click "Approve" to officially confirm, or "Reject" to decline (you can provide a reason).'],
-      ['Editing / Deleting Bookings', 'Click "Edit" on a booking in the history list to change the room, title, contact, or time slots. Click the trash icon to delete/release the booking immediately.'],
-      ['Filtering & Exporting', 'Filter the booking history by Year, Month, or Specific Date. The summary bar shows active filters. Click "Export CSV" to download the filtered results.'],
-      ['Email Logs & Status Tracker', 'Go to the Email Sent History tab to inspect when booking emails were queued or dispatched, verify their current delivery status, and inspect recipient addresses.'],
-    ],
-    users: [
-      ['Super Admin vs Approver', 'Super Admin accounts can manage other admin users, add/delete rooms, and edit all settings. Approvers are read-only for rooms/users but can approve/reject bookings.'],
-      ['Creating Admin Accounts', 'Only Super Admins can access the Admin Management tab to register new admin accounts. Specify their role, department, and credentials.'],
-    ]
-  },
-  th: {
-    title: 'คู่มือสำหรับผู้ดูแลระบบ (Admin Guide & Manual)',
-    tabs: {
-      rooms: 'การจัดการห้อง',
-      bookings: 'การจัดการจอง & ส่งออก',
-      users: 'สิทธิ์ระบบ & ตั้งค่า',
-    },
-    rooms: [
-      ['การเพิ่ม/แก้ไขห้อง', 'ไปที่แท็บ "จัดการห้องประชุม" คลิก "เพิ่มห้องประชุมใหม่" หรือกด "แก้ไข" ที่ห้องเดิม คุณสามารถอัปโหลดรูปภาพ กำหนดความจุคน เลือกสิ่งอำนวยความสะดวก และบันทึกได้'],
-      ['การปิดห้อง/ซ่อมบำรุง', 'กดแก้ไขห้อง แล้วติ๊กถูกที่ "ปิดใช้งานห้องชั่วคราว" ระบุช่วงวันที่ และเลือกเหตุผล (เช่น ปรับปรุงชั่วคราว, ล้างแอร์) เพื่อปิดกั้นไม่ให้ผู้ใช้กดจองในช่วงเวลาดังกล่าวโดยอัตโนมัติ'],
-    ],
-    bookings: [
-      ['การอนุมัติ / ปฏิเสธ', 'ตรวจสอบคำขอที่แท็บคำขอจอง หรือบนปฏิทิน คลิก "อนุมัติ" เพื่อยืนยันการใช้งานจริง หรือคลิก "ปฏิเสธ" เพื่อส่งอีเมลยกเลิกรายการจอง'],
-      ['การแก้ไข / ลบรายการจอง', 'คลิก "แก้ไข" รายการจองใดๆ เพื่อเปลี่ยนห้อง ชื่อเรื่อง ผู้ติดต่อ หรือเวลาได้ทันที หรือคลิกไอคอนถังขยะเพื่อยกเลิกและปล่อยห้องว่างทันที'],
-      ['การกรองประวัติและการส่งออก', 'กรองรายการจองย้อนหลังแยกตาม ปี, เดือน หรือระบุวันเจาะจง แล้วคลิก "ส่งออก CSV" เพื่อดึงรายงานเฉพาะรายการที่แสดงอยู่บนหน้าจอ'],
-      ['ประวัติอีเมลยืนยันตัวตน', 'ไปที่แท็บ "ประวัติการส่งอีเมล" เพื่อตรวจสอบช่วงเวลาที่ระบบคิวส่งอีเมลออกจริง เพื่อติดตามว่าระบบส่งลิงก์ยืนยันตัวตนสำเร็จหรือไม่'],
-    ],
-    users: [
-      ['สิทธิ์ Super Admin และ Approver', 'Super Admin สามารถจัดการบัญชีผู้ดูแลระบบท่านอื่น เพิ่ม/ลบห้อง และตั้งค่าทุกอย่างได้ ส่วน Approver สามารถเข้ามาเพื่อตรวจและกดอนุมัติ/ปฏิเสธรายการจองเท่านั้น'],
-      ['การสร้างบัญชีแอดมินใหม่', 'เฉพาะ Super Admin เท่านั้นที่สามารถเข้าแท็บ "จัดการผู้ดูแลระบบ" เพื่อลงทะเบียนบัญชีแอดมินใหม่ กำหนดแผนก และเลือกประเภทสิทธิ์ได้'],
-    ]
-  }
-} as const;
+
+export const hashPassword = async (password: string): Promise<string> => {
+  const msgUint8 = new TextEncoder().encode(password);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  return hashHex;
+};
 
 interface AdminPanelProps {
   rooms: Room[];
@@ -142,6 +106,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   // Real-time admins listener and seeding on Firestore
   useEffect(() => {
+    if (!currentUser) {
+      setAdminUsers(INITIAL_ADMIN_USERS);
+      return;
+    }
     const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
       if (snapshot.empty) {
         console.log("Admins collection is empty, seeding defaults...");
@@ -155,7 +123,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       } else {
         const loadedAdmins: AdminUser[] = [];
         snapshot.forEach((snap) => {
-          loadedAdmins.push(snap.data() as AdminUser);
+          const u = snap.data() as AdminUser;
+          loadedAdmins.push(u);
+          if (u.password && !/^[a-f0-9]{64}$/i.test(u.password)) {
+            (async () => {
+              try {
+                const hashed = await hashPassword(u.password);
+                await setDoc(doc(db, 'admins', u.id), { ...u, password: hashed });
+                console.log(`Successfully migrated admin ${u.username} password to hash.`);
+              } catch (migrateErr) {
+                console.error(`Failed to migrate password for admin ${u.username}:`, migrateErr);
+              }
+            })();
+          }
         });
         setAdminUsers(loadedAdmins);
       }
@@ -165,7 +145,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
   
   // UI State
   const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('analytics');
@@ -203,19 +183,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [historyFilterMonth, setHistoryFilterMonth] = useState<string>('all');
   const [historyFilterDay, setHistoryFilterDay] = useState<string>('');
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
-  const [bookingEditForm, setBookingEditForm] = useState({
-    roomId: '',
-    title: '',
-    organizer: '',
-    email: '',
-    employeeId: '',
-    department: '',
-    deskNumber: '',
-    date: '',
-    startHour: BOOKING_START_HOUR,
-    endHour: Math.min(BOOKING_START_HOUR + 1, BOOKING_END_HOUR),
-    status: BookingStatus.CONFIRMED
-  });
 
   // Modals
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
@@ -274,19 +241,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = adminUsers.find(u => u.username === loginUsername && u.password === loginPassword);
+    const hashed = await hashPassword(loginPassword);
     
-    if (user) {
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
-        }
-      } catch (authErr) {
-        console.warn("Background Firebase Auth login failed (working offline?):", authErr);
+    try {
+      let currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        currentFirebaseUser = (await signInAnonymously(auth)).user;
       }
-      completeLogin(user);
-    } else {
-      setLoginErrorKey('invalidUserPass');
+
+      const setAdminCustomClaimsFn = httpsCallable(functions, 'setAdminCustomClaims');
+      const res = await setAdminCustomClaimsFn({
+        username: loginUsername,
+        password: hashed
+      });
+
+      const resData = res.data as { success: boolean; user: AdminUser };
+      if (resData.success && resData.user) {
+        if (auth.currentUser) {
+          await auth.currentUser.getIdToken(true);
+        }
+        completeLogin(resData.user);
+      } else {
+        setLoginErrorKey('invalidUserPass');
+      }
+    } catch (err) {
+      console.warn("Cloud function login failed, falling back to local list matching:", err);
+      const user = adminUsers.find(u => u.username === loginUsername && (u.password === hashed || u.password === loginPassword));
+      if (user) {
+        completeLogin(user);
+      } else {
+        setLoginErrorKey('invalidUserPass');
+      }
     }
   };
 
@@ -321,11 +306,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           return;
       }
       
+      const hashedPassword = await hashPassword(password);
       const newUserId = Math.random().toString(36).substr(2, 9);
       const newUser: AdminUser = {
           id: newUserId,
           username: newUserForm.username,
-          password,
+          password: hashedPassword,
           role: newUserForm.role,
           employeeId,
           department: newUserForm.department,
@@ -813,59 +799,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
 
-  const openEditBookingModal = (booking: Booking) => {
-    setEditingBooking(booking);
-    setBookingEditForm({
-      roomId: booking.roomId,
-      title: booking.title || '',
-      organizer: booking.organizer || '',
-      email: booking.email || '',
-      employeeId: booking.employeeId || '',
-      department: booking.department || '',
-      deskNumber: booking.deskNumber || '',
-      date: getDateInputValue(booking.startTime),
-      startHour: booking.startTime.getHours(),
-      endHour: Math.max(booking.startTime.getHours() + 1, booking.endTime.getHours()),
-      status: booking.status || BookingStatus.CONFIRMED
-    });
-  };
-
-  const handleBookingEditSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingBooking || !onUpdateBooking) return;
-
-    const startHour = Number(bookingEditForm.startHour);
-    const endHour = Number(bookingEditForm.endHour);
-    if (!bookingEditForm.date || endHour <= startHour) {
-      showNotification(language === 'th' ? 'กรุณาตรวจสอบวันที่และเวลา' : 'Please check the booking date and time.', 'error');
-      return;
-    }
-
-    if (bookingEditForm.email && !/^[^@\s]+@yageo\.com$/i.test(bookingEditForm.email.trim())) {
-      showNotification(language === 'th' ? 'กรุณาใช้อีเมล @yageo.com เท่านั้น' : 'Please use @yageo.com email only.', 'error');
-      return;
-    }
-
-    const startTime = new Date(`${bookingEditForm.date}T${String(startHour).padStart(2, '0')}:00:00`);
-    const endTime = new Date(`${bookingEditForm.date}T${String(endHour).padStart(2, '0')}:00:00`);
-    const success = await onUpdateBooking(editingBooking.id, {
-      roomId: bookingEditForm.roomId,
-      title: bookingEditForm.title.trim(),
-      organizer: bookingEditForm.organizer.trim(),
-      email: bookingEditForm.email.trim(),
-      employeeId: bookingEditForm.employeeId.trim(),
-      department: bookingEditForm.department,
-      deskNumber: bookingEditForm.deskNumber.trim(),
-      startTime,
-      endTime,
-      status: bookingEditForm.status
-    });
-
-    if (success) {
-      setEditingBooking(null);
-      showNotification(language === 'th' ? 'อัปเดตรายการจองเรียบร้อยแล้ว' : 'Booking updated successfully.', 'success');
-    }
-  };
 
   const getAdminBookingDisplayState = (booking: Booking): AdminBookingDisplayState => {
     if (booking.status === BookingStatus.PENDING) return 'pending';
@@ -1311,7 +1244,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                     )}
                                     {onUpdateBooking && (
                                         <button
-                                            onClick={() => openEditBookingModal(booking)}
+                                            onClick={() => setEditingBooking(booking)}
                                             className="text-slate-400 hover:text-brand-600 hover:bg-brand-50 p-2 rounded-lg transition-all"
                                             title={t.edit}
                                         >
@@ -1659,7 +1592,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                    <div className="flex items-center justify-end space-x-1.5">
                                       {onUpdateBooking && (
                                          <button
-                                            onClick={() => openEditBookingModal(booking)}
+                                            onClick={() => setEditingBooking(booking)}
                                             className="rounded-lg p-2 text-slate-400 transition-all hover:bg-brand-50 hover:text-brand-600"
                                             title={t.edit}
                                          >
@@ -1962,168 +1895,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
       )}
 
-      {/* Edit Booking Modal */}
-      {editingBooking && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[calc(100vh-2rem)] animate-in fade-in zoom-in duration-200 overflow-hidden">
-            <form onSubmit={handleBookingEditSubmit} className="flex max-h-[calc(100vh-2rem)] flex-col">
-              <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-100">
-                <h3 className="text-lg font-bold text-slate-900">{language === 'th' ? 'แก้ไขรายการจอง' : 'Edit Booking'}</h3>
-                <button type="button" onClick={() => setEditingBooking(null)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.room}</label>
-                    <select
-                      value={bookingEditForm.roomId}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, roomId: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                    >
-                      {sortedRooms.map(room => (
-                        <option key={room.id} value={room.id}>{room.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.organizerName}</label>
-                    <input
-                      required
-                      type="text"
-                      value={bookingEditForm.organizer}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, organizer: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'อีเมลผู้จอง' : 'Booker Email'}</label>
-                  <input
-                    required
-                    type="email"
-                    value={bookingEditForm.email}
-                    onChange={(e) => setBookingEditForm({ ...bookingEditForm, email: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    placeholder="username@yageo.com"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.bookingTitle}</label>
-                    <input
-                      required
-                      type="text"
-                      value={bookingEditForm.title}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, title: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.employeeId}</label>
-                    <input
-                      required
-                      type="text"
-                      value={bookingEditForm.employeeId}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, employeeId: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.department}</label>
-                    <select
-                      value={bookingEditForm.department}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, department: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                    >
-                      <option value="">{t.selectDeptOption}</option>
-                      {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
-                        <option key={value} value={value}>{label}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.deskPhone}</label>
-                    <input
-                      type="text"
-                      value={bookingEditForm.deskNumber}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, deskNumber: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.dateTimeCol}</label>
-                    <input
-                      required
-                      type="date"
-                      lang="en-US"
-                      value={bookingEditForm.date}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, date: e.target.value })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    />
-                    {bookingEditForm.date && (
-                      <p className="mt-1 text-[11px] font-bold text-slate-500">{formatDateInputDisplay(bookingEditForm.date)}</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'เวลาเริ่ม' : 'Start Time'}</label>
-                    <select
-                      value={bookingEditForm.startHour}
-                      onChange={(e) => {
-                        const startHour = Number(e.target.value);
-                        setBookingEditForm({ ...bookingEditForm, startHour, endHour: bookingEditForm.endHour <= startHour ? Math.min(startHour + 1, BOOKING_END_HOUR) : bookingEditForm.endHour });
-                      }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                    >
-                      {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR).map(hour => (
-                        <option key={hour} value={hour}>{String(hour).padStart(2, '0')}:00</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'เวลาสิ้นสุด' : 'End Time'}</label>
-                    <select
-                      value={bookingEditForm.endHour}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, endHour: Number(e.target.value) })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                    >
-                      {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR + 1).map(hour => (
-                        <option key={hour} value={hour} disabled={hour <= bookingEditForm.startHour}>{String(hour).padStart(2, '0')}:00</option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-shrink-0 justify-end space-x-3 p-6 border-t border-slate-100 bg-slate-50">
-                <button
-                  type="button"
-                  onClick={() => setEditingBooking(null)}
-                  className="px-5 py-2.5 border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
-                >
-                  {t.cancel}
-                </button>
-                <button
-                  type="submit"
-                  className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
-                >
-                  {t.save}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <EditBookingModal
+        isOpen={!!editingBooking}
+        onClose={() => setEditingBooking(null)}
+        language={language}
+        rooms={rooms}
+        booking={editingBooking}
+        onSave={onUpdateBooking || (async () => false)}
+        t={t}
+        showNotification={showNotification}
+      />
 
       {/* Add/Edit Room Modal */}
       {isRoomModalOpen && (
@@ -2581,75 +2362,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
 
-      {isAdminGuideOpen && (() => {
-        const c = copyAdminGuide[language];
-        return (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-            <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[82vh] animate-in zoom-in-95 duration-300">
-              <div className="bg-slate-50 px-6 py-4 border-b border-slate-150 flex items-center justify-between flex-shrink-0">
-                <div className="flex items-center space-x-2.5">
-                  <BookOpen className="w-5 h-5 text-brand-600" />
-                  <h2 className="font-bold text-slate-850 text-base sm:text-lg">{c.title}</h2>
-                </div>
-                <button type="button" onClick={() => setIsAdminGuideOpen(false)} className="p-1.5 hover:bg-slate-200/70 text-slate-400 hover:text-slate-600 rounded-lg transition-colors" aria-label={t.close}>
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              <div className="p-6 overflow-y-auto flex-grow text-slate-800 scrollbar-thin text-sm leading-relaxed space-y-6">
-                <div>
-                  <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
-                     <Building2 className="w-4 h-4 mr-2" />
-                     {c.tabs.rooms}
-                  </h3>
-                  <div className="mt-3 space-y-3">
-                     {c.rooms.map(([title, desc]) => (
-                        <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-                           <h4 className="font-bold text-xs text-slate-900">{title}</h4>
-                           <p className="text-xs text-slate-600 mt-1">{desc}</p>
-                        </div>
-                     ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
-                     <Calendar className="w-4 h-4 mr-2" />
-                     {c.tabs.bookings}
-                  </h3>
-                  <div className="mt-3 space-y-3">
-                     {c.bookings.map(([title, desc]) => (
-                        <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-                           <h4 className="font-bold text-xs text-slate-900">{title}</h4>
-                           <p className="text-xs text-slate-600 mt-1">{desc}</p>
-                        </div>
-                     ))}
-                  </div>
-                </div>
-
-                <div>
-                  <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
-                     <UserCog className="w-4 h-4 mr-2" />
-                     {c.tabs.users}
-                  </h3>
-                  <div className="mt-3 space-y-3">
-                     {c.users.map(([title, desc]) => (
-                        <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-                           <h4 className="font-bold text-xs text-slate-900">{title}</h4>
-                           <p className="text-xs text-slate-600 mt-1">{desc}</p>
-                        </div>
-                     ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-slate-50 px-6 py-4 border-t border-slate-150 flex justify-end flex-shrink-0">
-                <button type="button" onClick={() => setIsAdminGuideOpen(false)} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95">{t.close}</button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
+      <AdminGuideModal
+        isOpen={isAdminGuideOpen}
+        onClose={() => setIsAdminGuideOpen(false)}
+        language={language}
+        t={t}
+      />
     </div>
   );
 };

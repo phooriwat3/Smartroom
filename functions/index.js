@@ -8,11 +8,11 @@ const { FieldValue, getFirestore } = require("firebase-admin/firestore");
 const PROJECT_ID = "sutsmartbus-495306";
 const DATABASE_ID = "ai-studio-28114784-a066-482c-9738-dfb6c9d68ce0";
 const BOOTSTRAP_SUPER_ADMINS = [
-  { id: "admin1", username: "admin", password: "123", role: "SUPER_ADMIN" },
+  { id: "admin1", username: "admin", password: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3", role: "SUPER_ADMIN" },
 ];
 const BOOTSTRAP_ADMINS = [
   ...BOOTSTRAP_SUPER_ADMINS,
-  { id: "approver1", username: "approver", password: "123", role: "APPROVER" },
+  { id: "approver1", username: "approver", password: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3", role: "APPROVER" },
 ];
 
 admin.initializeApp();
@@ -1728,6 +1728,74 @@ exports.deleteBookingAsAdmin = onCall(APP_HTTPS_OPTIONS, async (request) => {
       "internal",
       `Booking deletion failed: ${error && error.message ? error.message : String(error)}`
     );
+  }
+});
+
+exports.setAdminCustomClaims = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    const username = typeof data.username === "string" ? data.username.trim() : "";
+    const password = typeof data.password === "string" ? data.password : "";
+
+    if (!username || !password) {
+      throw new HttpsError("invalid-argument", "Username and password are required.");
+    }
+
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "User must be signed in anonymously first.");
+    }
+
+    const adminsRef = db.collection("admins");
+    const querySnap = await adminsRef
+      .where("username", "==", username)
+      .where("password", "==", password)
+      .limit(1)
+      .get();
+
+    if (querySnap.empty) {
+      const credentials = { username, password };
+      const bootstrapUser = findBootstrapAdmin(credentials);
+      if (bootstrapUser) {
+        const role = bootstrapUser.role;
+        await admin.auth().setCustomUserClaims(request.auth.uid, {
+          role: role,
+          super_admin: role === "SUPER_ADMIN"
+        });
+
+        return {
+          success: true,
+          user: {
+            id: bootstrapUser.id,
+            username: bootstrapUser.username,
+            role: bootstrapUser.role,
+            name: bootstrapUser.name || "Default Admin"
+          }
+        };
+      }
+      throw new HttpsError("unauthenticated", "Invalid username or password.");
+    }
+
+    const adminDoc = querySnap.docs[0].data();
+    const role = adminDoc.role;
+
+    await admin.auth().setCustomUserClaims(request.auth.uid, {
+      role: role,
+      super_admin: role === "SUPER_ADMIN"
+    });
+
+    return {
+      success: true,
+      user: {
+        id: adminDoc.id,
+        username: adminDoc.username,
+        role: adminDoc.role,
+        name: adminDoc.name || adminDoc.username
+      }
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) throw error;
+    console.error("setAdminCustomClaims failed", error);
+    throw new HttpsError("internal", error.message || String(error));
   }
 });
 

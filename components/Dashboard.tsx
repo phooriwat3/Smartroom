@@ -1119,13 +1119,14 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                                   renderedCells.push(
                                     <td key={`${hour}-${booking.id}`} colSpan={colSpan} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 transition-all border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClass(booking.department)}
+                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClass(booking.department)}
                                           ${isNoCheckInStatus
                                           ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
                                           : isPending
                                             ? 'bg-amber-50 border-amber-300 text-amber-900'
                                             : 'bg-orange-100 border-orange-300 text-orange-950'
                                         }
+                                        hover:scale-[1.02] hover:shadow-md cursor-pointer transition-all duration-200
                                       `}
                                         title={`${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >

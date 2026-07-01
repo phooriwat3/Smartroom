@@ -79,7 +79,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
     return type;
   };
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-md transition-shadow duration-300 flex flex-col h-full">
+    <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-lg hover:-translate-y-0.5 transition-all duration-300 flex flex-col h-full">
       <div className="relative h-32 overflow-hidden p-4 flex flex-col justify-end z-0">
         {room.imageUrl ? (
           <>
