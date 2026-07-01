@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { AVAILABLE_ROOMS, INITIAL_BOOKINGS_MOCK, BOOKING_START_HOUR, BOOKING_END_HOUR, APP_BASE_URL } from './constants';
-import { Room, Booking, RoomType, BookingStatus, AdminUser, RoomMaintenanceRecord } from './types';
+import { Room, Booking, RoomType, BookingStatus, AdminUser, AdminRole, RoomMaintenanceRecord } from './types';
 import RoomCard from './components/RoomCard';
 import BookingModal from './components/BookingModal';
 import Dashboard from './components/Dashboard';
@@ -177,6 +177,43 @@ const parseFirestoreDate = (value: any): Date | undefined => {
   const date = typeof value.toDate === 'function' ? value.toDate() : new Date(value);
   return Number.isNaN(date.getTime()) ? undefined : date;
 };
+
+const normalizeStoredAdminRole = (role?: string | null): AdminRole => {
+  const normalized = String(role || '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+  return normalized === 'SUPER_ADMIN' ? 'SUPER_ADMIN' : 'APPROVER';
+};
+
+const getStoredAdminUser = (): AdminUser | null => {
+  try {
+    const saved = localStorage.getItem('smartroom_admin_user');
+    if (!saved) return null;
+
+    const parsed = JSON.parse(saved) as Partial<AdminUser>;
+    if (!parsed || !parsed.id || !parsed.username) return null;
+
+    return {
+      id: String(parsed.id),
+      username: String(parsed.username),
+      password: parsed.password ? String(parsed.password) : '',
+      role: normalizeStoredAdminRole(parsed.role),
+      name: parsed.name,
+      employeeId: parsed.employeeId,
+      department: parsed.department,
+      phone: parsed.phone,
+    };
+  } catch (error) {
+    console.warn('Could not restore saved Admin session:', error);
+    return null;
+  }
+};
+
+const getAdminAuthPayload = (user: AdminUser) => ({
+  id: user.id,
+  firestoreDocId: user.id,
+  username: user.username,
+  password: user.password || '',
+  role: normalizeStoredAdminRole(user.role),
+});
 
 const SmartRoomApplication: React.FC = () => {
   // --- LANGUAGE STATE ---
@@ -723,7 +760,15 @@ const SmartRoomApplication: React.FC = () => {
 
         // Step 2: Try to delete from Firebase in background
         try {
-          await deleteDoc(doc(db, 'bookings', id));
+          if (adminUser) {
+            const deleteBookingAsAdmin = httpsCallable(functions, 'deleteBookingAsAdmin');
+            await deleteBookingAsAdmin({
+              bookingId: id,
+              admin: getAdminAuthPayload(adminUser)
+            });
+          } else {
+            await deleteDoc(doc(db, 'bookings', id));
+          }
           showNotification(
             language === 'th' ? 'ลบข้อมูลการจองสำเร็จแล้ว' : 'Booking successfully deleted',
             'success'

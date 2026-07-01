@@ -1,4 +1,4 @@
-﻿const crypto = require("crypto");
+const crypto = require("crypto");
 const { onCall, onRequest, HttpsError } = require("firebase-functions/v2/https");
 const { onSchedule } = require("firebase-functions/v2/scheduler");
 const { defineSecret } = require("firebase-functions/params");
@@ -24,7 +24,7 @@ const EMAIL_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 const CHECK_IN_WINDOW_BEFORE_MS = 15 * 60 * 1000;
 const CHECK_IN_WINDOW_AFTER_MS = 15 * 60 * 1000;
 const POWER_AUTOMATE_VERIFICATION_FLOW_URL = defineSecret("POWER_AUTOMATE_VERIFICATION_FLOW_URL");
-const DEFAULT_APP_BASE_URL = "https://tokinsmartroom-495306.web.app";
+const DEFAULT_APP_BASE_URL = "https://tokinsmartroom-495306.web.app/";
 const LEGACY_APP_BASE_URLS = new Set([
   "https://tokinsmartroom.web.app",
   "https://sutsmartbus-495306.web.app",
@@ -68,7 +68,7 @@ function isLocalOrLegacyAppUrl(value) {
 
 function getConfiguredAppBaseUrl() {
   const configuredUrl = (process.env.APP_BASE_URL || process.env.PUBLIC_APP_URL || DEFAULT_APP_BASE_URL).trim().replace(/\/+$/, "");
-  return isLocalOrLegacyAppUrl(configuredUrl) ? DEFAULT_APP_BASE_URL : configuredUrl;
+  return isLocalOrLegacyAppUrl(configuredUrl) ? DEFAULT_APP_BASE_URL.replace(/\/+$/, "") : configuredUrl;
 }
 
 function getYageoEmailDomain() {
@@ -604,6 +604,50 @@ function getAuthEmail(request) {
     : "";
 }
 
+function normalizeAdminRoleValue(value) {
+  const normalized = String(value || "").trim().toUpperCase().replace(/[\s-]+/g, "_");
+  if (normalized === "SUPER_ADMIN") return "SUPER_ADMIN";
+  if (normalized === "APPROVER") return "APPROVER";
+  return "";
+}
+
+async function isFirebaseSuperAdminAuth(request) {
+  if (!request || !request.auth) return false;
+
+  const token = request.auth.token || {};
+  if (token.super_admin === true || normalizeAdminRoleValue(token.role) === "SUPER_ADMIN") {
+    return true;
+  }
+
+  const email = getAuthEmail(request);
+  if (email === "phooriwat456@gmail.com") return true;
+
+  const candidateIds = [
+    normalizeId(request.auth.uid),
+    normalizeId(email),
+  ].filter(Boolean);
+
+  for (const candidateId of [...new Set(candidateIds)]) {
+    const snap = await db.collection("admins").doc(candidateId).get();
+    if (snap.exists && normalizeAdminRoleValue((snap.data() || {}).role) === "SUPER_ADMIN") {
+      return true;
+    }
+  }
+
+  if (email) {
+    const querySnap = await db
+      .collection("admins")
+      .where("username", "==", email)
+      .limit(1)
+      .get();
+    if (!querySnap.empty && normalizeAdminRoleValue((querySnap.docs[0].data() || {}).role) === "SUPER_ADMIN") {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 async function isFirebaseAdminAuth(request) {
   if (!request || !request.auth) return false;
 
@@ -635,7 +679,7 @@ async function isFirebaseAdminAuth(request) {
 function isMatchingSuperAdmin(data, credentials) {
   return (
     data &&
-    data.role === "SUPER_ADMIN" &&
+    normalizeAdminRoleValue(data.role) === "SUPER_ADMIN" &&
     typeof data.password === "string" &&
     data.password === credentials.password &&
     typeof data.username === "string" &&
@@ -646,7 +690,7 @@ function isMatchingSuperAdmin(data, credentials) {
 function isMatchingAdmin(data, credentials) {
   return (
     data &&
-    (data.role === "SUPER_ADMIN" || data.role === "APPROVER") &&
+    normalizeAdminRoleValue(data.role) &&
     typeof data.password === "string" &&
     data.password === credentials.password &&
     typeof data.username === "string" &&
@@ -656,7 +700,7 @@ function isMatchingAdmin(data, credentials) {
 
 function findBootstrapSuperAdmin(credentials) {
   return BOOTSTRAP_SUPER_ADMINS.find((user) => (
-    user.role === "SUPER_ADMIN" &&
+    normalizeAdminRoleValue(user.role) === "SUPER_ADMIN" &&
     user.username === credentials.username &&
     user.password === credentials.password &&
     (
@@ -669,7 +713,7 @@ function findBootstrapSuperAdmin(credentials) {
 
 function findBootstrapAdmin(credentials) {
   return BOOTSTRAP_ADMINS.find((user) => (
-    (user.role === "SUPER_ADMIN" || user.role === "APPROVER") &&
+    normalizeAdminRoleValue(user.role) &&
     user.username === credentials.username &&
     user.password === credentials.password &&
     (
@@ -761,7 +805,7 @@ async function assertAdminAccess(request, data) {
     firestoreDocId: normalizeId(adminUser.firestoreDocId),
     username: assertString(adminUser.username, "admin.username"),
     password: assertString(adminUser.password, "admin.password"),
-    role: assertString(adminUser.role, "admin.role"),
+    role: normalizeAdminRoleValue(assertString(adminUser.role, "admin.role")),
   };
 
   if (credentials.role !== "SUPER_ADMIN" && credentials.role !== "APPROVER") {
@@ -983,27 +1027,171 @@ exports.saveRoomAsAdmin = onCall(APP_HTTPS_OPTIONS, async (request) => {
   }
 });
 
-exports.deleteAdminAccount = onCall(APP_HTTPS_OPTIONS, async (request) => {
+function sanitizeAdminAccount(rawAdmin) {
+  if (!rawAdmin || typeof rawAdmin !== "object") {
+    throw new HttpsError("invalid-argument", "adminAccount is required.");
+  }
+
+  const id = rawAdmin.id
+    ? assertSafeDocumentId(rawAdmin.id, "adminAccount.id")
+    : assertSafeDocumentId(`admin_${Date.now().toString(36)}_${crypto.randomBytes(4).toString("hex")}`, "adminAccount.id");
+  const username = assertString(rawAdmin.username, "adminAccount.username").trim();
+  if (!username || username.length > 254) {
+    throw new HttpsError("invalid-argument", "adminAccount.username is required and must be 254 characters or fewer.");
+  }
+
+  const password = assertString(rawAdmin.password, "adminAccount.password").trim();
+  if (!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/.test(password)) {
+    throw new HttpsError("invalid-argument", "adminAccount.password must be at least 8 characters and include lowercase, uppercase, and a number.");
+  }
+
+  const employeeId = assertString(rawAdmin.employeeId, "adminAccount.employeeId").trim();
+  if (!/^\d{7}$/.test(employeeId)) {
+    throw new HttpsError("invalid-argument", "adminAccount.employeeId must be exactly 7 digits.");
+  }
+
+  const phone = assertString(rawAdmin.phone, "adminAccount.phone").trim();
+  if (!/^\d{4}$/.test(phone)) {
+    throw new HttpsError("invalid-argument", "adminAccount.phone must be exactly 4 digits.");
+  }
+
+  const department = assertString(rawAdmin.department, "adminAccount.department").trim();
+  if (!department || department.length > 120) {
+    throw new HttpsError("invalid-argument", "adminAccount.department is required and must be 120 characters or fewer.");
+  }
+
+  const role = normalizeAdminRoleValue(assertString(rawAdmin.role, "adminAccount.role"));
+  if (role !== "SUPER_ADMIN" && role !== "APPROVER") {
+    throw new HttpsError("invalid-argument", "adminAccount.role must be SUPER_ADMIN or APPROVER.");
+  }
+
+  return {
+    id,
+    username,
+    password,
+    role,
+    employeeId,
+    department,
+    phone,
+  };
+}
+
+exports.createAdminAccount = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  let adminAccount = null;
   try {
     const data = request.data || {};
-    const targetAdminDocId = assertDocumentId(data.targetAdminDocId, "targetAdminDocId");
-    const superAdmin = data.superAdmin || {};
 
-    const credentials = {
-      id: normalizeId(superAdmin.id),
-      firestoreDocId: normalizeId(superAdmin.firestoreDocId),
-      username: assertString(superAdmin.username, "superAdmin.username"),
-      password: assertString(superAdmin.password, "superAdmin.password"),
-      role: assertString(superAdmin.role, "superAdmin.role"),
-    };
+    if (!(await isFirebaseSuperAdminAuth(request))) {
+      const superAdmin = data.superAdmin || data.admin || {};
+      const credentials = {
+        id: normalizeId(superAdmin.id),
+        firestoreDocId: normalizeId(superAdmin.firestoreDocId),
+        username: assertString(superAdmin.username, "superAdmin.username"),
+        password: assertString(superAdmin.password, "superAdmin.password"),
+        role: normalizeAdminRoleValue(assertString(superAdmin.role, "superAdmin.role")),
+      };
 
-    if (credentials.role !== "SUPER_ADMIN") {
-      throw new HttpsError("permission-denied", "Only Super Admin users can delete Admin accounts.");
+      if (credentials.role !== "SUPER_ADMIN") {
+        throw new HttpsError("permission-denied", "Only Super Admin users can create Admin accounts.");
+      }
+
+      const verifiedSuperAdmin = await findSuperAdmin(credentials);
+      if (!verifiedSuperAdmin) {
+        throw new HttpsError("permission-denied", "Super Admin credentials could not be verified.");
+      }
     }
 
-    const verifiedSuperAdmin = await findSuperAdmin(credentials);
-    if (!verifiedSuperAdmin) {
-      throw new HttpsError("permission-denied", "Super Admin credentials could not be verified.");
+    adminAccount = sanitizeAdminAccount(data.adminAccount || data.newAdmin || data.adminUser);
+    const targetRef = db.collection("admins").doc(adminAccount.id);
+
+    const [targetSnap, usernameSnap] = await Promise.all([
+      targetRef.get(),
+      db.collection("admins").where("username", "==", adminAccount.username).limit(1).get(),
+    ]);
+
+    if (targetSnap.exists) {
+      throw new HttpsError("already-exists", `Admin document already exists: admins/${adminAccount.id}`);
+    }
+
+    if (!usernameSnap.empty) {
+      throw new HttpsError("already-exists", `Admin username already exists: ${adminAccount.username}`);
+    }
+
+    await targetRef.set({
+      ...adminAccount,
+      createdAt: FieldValue.serverTimestamp(),
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+
+    return {
+      created: true,
+      admin: adminAccount,
+      path: `admins/${adminAccount.id}`,
+      projectId: PROJECT_ID,
+      databaseId: DATABASE_ID,
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+
+    console.error("createAdminAccount failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+      adminId: adminAccount && adminAccount.id,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `Admin create failed on the server: ${error && error.message ? error.message : String(error)}`,
+      {
+        code: error && error.code,
+        message: error && error.message,
+      }
+    );
+  }
+});
+
+exports.deleteAdminAccount = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  let targetAdminDocId = "";
+  try {
+    const data = request.data || {};
+    targetAdminDocId = assertDocumentId(data.targetAdminDocId, "targetAdminDocId");
+
+    let verifiedSuperAdmin = null;
+    let credentials = {
+      id: normalizeId(request.auth && request.auth.uid),
+      firestoreDocId: normalizeId(request.auth && request.auth.uid),
+      username: getAuthEmail(request),
+      password: "",
+      role: "SUPER_ADMIN",
+    };
+
+    if (await isFirebaseSuperAdminAuth(request)) {
+      verifiedSuperAdmin = {
+        docId: normalizeId(request.auth && request.auth.uid) || getAuthEmail(request),
+        data: { username: getAuthEmail(request), role: "SUPER_ADMIN" },
+        source: "firebase-auth",
+      };
+    } else {
+      const superAdmin = data.superAdmin || {};
+      credentials = {
+        id: normalizeId(superAdmin.id),
+        firestoreDocId: normalizeId(superAdmin.firestoreDocId),
+        username: assertString(superAdmin.username, "superAdmin.username"),
+        password: assertString(superAdmin.password, "superAdmin.password"),
+        role: normalizeAdminRoleValue(assertString(superAdmin.role, "superAdmin.role")),
+      };
+
+      if (credentials.role !== "SUPER_ADMIN") {
+        throw new HttpsError("permission-denied", "Only Super Admin users can delete Admin accounts.");
+      }
+
+      verifiedSuperAdmin = await findSuperAdmin(credentials);
+      if (!verifiedSuperAdmin) {
+        throw new HttpsError("permission-denied", "Super Admin credentials could not be verified.");
+      }
     }
 
     if (
@@ -1021,20 +1209,26 @@ exports.deleteAdminAccount = onCall(APP_HTTPS_OPTIONS, async (request) => {
     }
 
     const targetData = targetSnap.data() || {};
-    if (targetData.role === "SUPER_ADMIN") {
+    if (normalizeAdminRoleValue(targetData.role) === "SUPER_ADMIN") {
       throw new HttpsError("failed-precondition", "Super Admin accounts are protected and cannot be deleted from this screen.");
     }
 
     await targetRef.delete();
 
+    const verifySnap = await targetRef.get();
+    if (verifySnap.exists) {
+      throw new HttpsError("internal", `Admin document still exists after delete: admins/${targetAdminDocId}`);
+    }
+
     return {
       deleted: true,
       path: `admins/${targetAdminDocId}`,
+      collection: "admins",
       projectId: PROJECT_ID,
       databaseId: DATABASE_ID,
     };
   } catch (error) {
-    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+    if (error instanceof HttpsError) {
       throw error;
     }
 
@@ -1042,11 +1236,17 @@ exports.deleteAdminAccount = onCall(APP_HTTPS_OPTIONS, async (request) => {
       message: error && error.message,
       code: error && error.code,
       stack: error && error.stack,
+      targetAdminDocId,
     });
 
     throw new HttpsError(
-      "failed-precondition",
-      `Admin delete failed on the server: ${error && error.message ? error.message : String(error)}`
+      "internal",
+      `Admin delete failed on the server: ${error && error.message ? error.message : String(error)}`,
+      {
+        code: error && error.code,
+        message: error && error.message,
+        targetAdminDocId,
+      }
     );
   }
 });
@@ -1493,3 +1693,41 @@ exports.markBookingNoShow = onCall(APP_HTTPS_OPTIONS, async (request) => {
     );
   }
 });
+
+exports.deleteBookingAsAdmin = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+
+    const bookingId = assertDocumentId(data.bookingId, "bookingId");
+    const bookingRef = db.collection("bookings").doc(bookingId);
+
+    const bookingSnap = await bookingRef.get();
+    if (!bookingSnap.exists) {
+      throw new HttpsError("not-found", `Booking document not found: bookings/${bookingId}`);
+    }
+
+    await bookingRef.delete();
+
+    return {
+      success: true,
+      bookingId,
+    };
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      throw error;
+    }
+
+    console.error("deleteBookingAsAdmin failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `Booking deletion failed: ${error && error.message ? error.message : String(error)}`
+    );
+  }
+});
+

@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download } from 'lucide-react';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
 import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firestore';
-import { signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
+import { signInAnonymously } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType } from '../firebase';
 
@@ -19,6 +19,63 @@ export const CLOSURE_REASONS = [
   { key: 'System Maintenance', labelEn: 'System Maintenance', labelTh: 'ซ่อมบำรุงระบบเครือข่ายและไอที' },
   { key: 'Other', labelEn: 'Other (Custom)', labelTh: 'อื่นๆ (ระบุเอง)' }
 ];
+
+const MONTHS_TH = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+];
+const MONTHS_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+
+const copyAdminGuide = {
+  en: {
+    title: 'TOKIN Smart Room - Admin Guide & Manual',
+    tabs: {
+      rooms: 'Room Management',
+      bookings: 'Booking Management',
+      users: 'Roles & Settings',
+    },
+    rooms: [
+      ['Adding/Editing Rooms', 'Go to the Rooms tab. Click "Add Room" to create a new room, or click "Edit" on an existing room. You can upload an image, set capacity, select amenities, and save.'],
+      ['Maintenance & Disabling Rooms', 'Edit a room, toggle "Temporarily Disable Room" (ปิดใช้งานห้องชั่วคราว), set the date range, choose a closure reason (e.g. Renovation, AC Maintenance), and save. This automatically prevents users from booking this room during the specified period.'],
+    ],
+    bookings: [
+      ['Approving / Rejecting', 'Review pending bookings under the "Pending Bookings" section or on the room timeline. Click "Approve" to officially confirm, or "Reject" to decline (you can provide a reason).'],
+      ['Editing / Deleting Bookings', 'Click "Edit" on a booking in the history list to change the room, title, contact, or time slots. Click the trash icon to delete/release the booking immediately.'],
+      ['Filtering & Exporting', 'Filter the booking history by Year, Month, or Specific Date. The summary bar shows active filters. Click "Export CSV" to download the filtered results.'],
+      ['Email Logs & Status Tracker', 'Go to the Email Sent History tab to inspect when booking emails were queued or dispatched, verify their current delivery status, and inspect recipient addresses.'],
+    ],
+    users: [
+      ['Super Admin vs Approver', 'Super Admin accounts can manage other admin users, add/delete rooms, and edit all settings. Approvers are read-only for rooms/users but can approve/reject bookings.'],
+      ['Creating Admin Accounts', 'Only Super Admins can access the Admin Management tab to register new admin accounts. Specify their role, department, and credentials.'],
+    ]
+  },
+  th: {
+    title: 'คู่มือสำหรับผู้ดูแลระบบ (Admin Guide & Manual)',
+    tabs: {
+      rooms: 'การจัดการห้อง',
+      bookings: 'การจัดการจอง & ส่งออก',
+      users: 'สิทธิ์ระบบ & ตั้งค่า',
+    },
+    rooms: [
+      ['การเพิ่ม/แก้ไขห้อง', 'ไปที่แท็บ "จัดการห้องประชุม" คลิก "เพิ่มห้องประชุมใหม่" หรือกด "แก้ไข" ที่ห้องเดิม คุณสามารถอัปโหลดรูปภาพ กำหนดความจุคน เลือกสิ่งอำนวยความสะดวก และบันทึกได้'],
+      ['การปิดห้อง/ซ่อมบำรุง', 'กดแก้ไขห้อง แล้วติ๊กถูกที่ "ปิดใช้งานห้องชั่วคราว" ระบุช่วงวันที่ และเลือกเหตุผล (เช่น ปรับปรุงชั่วคราว, ล้างแอร์) เพื่อปิดกั้นไม่ให้ผู้ใช้กดจองในช่วงเวลาดังกล่าวโดยอัตโนมัติ'],
+    ],
+    bookings: [
+      ['การอนุมัติ / ปฏิเสธ', 'ตรวจสอบคำขอที่แท็บคำขอจอง หรือบนปฏิทิน คลิก "อนุมัติ" เพื่อยืนยันการใช้งานจริง หรือคลิก "ปฏิเสธ" เพื่อส่งอีเมลยกเลิกรายการจอง'],
+      ['การแก้ไข / ลบรายการจอง', 'คลิก "แก้ไข" รายการจองใดๆ เพื่อเปลี่ยนห้อง ชื่อเรื่อง ผู้ติดต่อ หรือเวลาได้ทันที หรือคลิกไอคอนถังขยะเพื่อยกเลิกและปล่อยห้องว่างทันที'],
+      ['การกรองประวัติและการส่งออก', 'กรองรายการจองย้อนหลังแยกตาม ปี, เดือน หรือระบุวันเจาะจง แล้วคลิก "ส่งออก CSV" เพื่อดึงรายงานเฉพาะรายการที่แสดงอยู่บนหน้าจอ'],
+      ['ประวัติอีเมลยืนยันตัวตน', 'ไปที่แท็บ "ประวัติการส่งอีเมล" เพื่อตรวจสอบช่วงเวลาที่ระบบคิวส่งอีเมลออกจริง เพื่อติดตามว่าระบบส่งลิงก์ยืนยันตัวตนสำเร็จหรือไม่'],
+    ],
+    users: [
+      ['สิทธิ์ Super Admin และ Approver', 'Super Admin สามารถจัดการบัญชีผู้ดูแลระบบท่านอื่น เพิ่ม/ลบห้อง และตั้งค่าทุกอย่างได้ ส่วน Approver สามารถเข้ามาเพื่อตรวจและกดอนุมัติ/ปฏิเสธรายการจองเท่านั้น'],
+      ['การสร้างบัญชีแอดมินใหม่', 'เฉพาะ Super Admin เท่านั้นที่สามารถเข้าแท็บ "จัดการผู้ดูแลระบบ" เพื่อลงทะเบียนบัญชีแอดมินใหม่ กำหนดแผนก และเลือกประเภทสิทธิ์ได้'],
+    ]
+  }
+} as const;
 
 interface AdminPanelProps {
   rooms: Room[];
@@ -75,7 +132,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginErrorKey, setLoginErrorKey] = useState<'' | 'invalidUserPass' | 'googleAuthFailed'>('');
+  const [loginErrorKey, setLoginErrorKey] = useState<'' | 'invalidUserPass'>('');
 
   // Data State with Firebase Persistence
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
@@ -142,19 +199,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onConfirm: () => {},
   });
   const [searchTerm, setSearchTerm] = useState('');
-  const [historyFilterMode, setHistoryFilterMode] = useState<'all' | 'day' | 'week' | 'month' | 'year'>('all');
-  const [historyFilterDate, setHistoryFilterDate] = useState(() => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  const [historyFilterYear, setHistoryFilterYear] = useState<string>('all');
+  const [historyFilterMonth, setHistoryFilterMonth] = useState<string>('all');
+  const [historyFilterDay, setHistoryFilterDay] = useState<string>('');
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
   const [bookingEditForm, setBookingEditForm] = useState({
     roomId: '',
     title: '',
     organizer: '',
+    email: '',
     employeeId: '',
     department: '',
     deskNumber: '',
@@ -169,6 +222,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isAdminGuideOpen, setIsAdminGuideOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
     username: '',
     password: '',
@@ -236,28 +290,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      if (user) {
-        const isSuperMail = user.email === "phooriwat456@gmail.com";
-        const adminDoc = adminUsers.find(u => u.username === user.email || u.id === user.uid);
-        const role: AdminRole = isSuperMail ? 'SUPER_ADMIN' : (adminDoc ? adminDoc.role : 'APPROVER');
-
-        completeLogin({
-          id: user.uid,
-          username: user.email || user.displayName || 'Google Admin',
-          password: '',
-          role
-        });
-      }
-    } catch (e) {
-      console.error("Google Authentication Failure", e);
-      setLoginErrorKey('googleAuthFailed');
-    }
-  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -649,7 +681,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     .filter(bookingMatchesSearch)
     .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
 
-  const selectedHistoryDate = historyFilterDate ? new Date(`${historyFilterDate}T00:00:00`) : new Date();
   const weekStartsOnSunday = (date: Date) => {
     const start = new Date(date);
     start.setHours(0, 0, 0, 0);
@@ -657,18 +688,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return start;
   };
 
-  const bookingMatchesHistoryDateFilter = (booking: Booking) => {
-    if (historyFilterMode === 'all') return true;
-    if (!historyFilterDate || Number.isNaN(selectedHistoryDate.getTime())) return false;
-    const bookingDate = booking.startTime;
-    if (historyFilterMode === 'day') return isSameDay(bookingDate, selectedHistoryDate);
-    if (historyFilterMode === 'month') return bookingDate.getMonth() === selectedHistoryDate.getMonth() && bookingDate.getFullYear() === selectedHistoryDate.getFullYear();
-    if (historyFilterMode === 'year') return bookingDate.getFullYear() === selectedHistoryDate.getFullYear();
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear);
+    years.add(currentYear - 1);
+    
+    bookings.forEach(b => {
+      if (b.startTime) {
+        years.add(new Date(b.startTime).getFullYear());
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [bookings]);
 
-    const weekStart = weekStartsOnSunday(selectedHistoryDate);
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekStart.getDate() + 7);
-    return bookingDate >= weekStart && bookingDate < weekEnd;
+  const bookingMatchesHistoryDateFilter = (booking: Booking) => {
+    const bookingDate = booking.startTime;
+    if (!bookingDate) return false;
+
+    // 1. Specific Day Filter (if selected)
+    if (historyFilterDay) {
+      const selectedDayDate = new Date(`${historyFilterDay}T00:00:00`);
+      if (!Number.isNaN(selectedDayDate.getTime())) {
+        if (!isSameDay(bookingDate, selectedDayDate)) return false;
+      }
+    }
+
+    // 3. Year Filter (if selected)
+    if (historyFilterYear !== 'all') {
+      const selectedYear = parseInt(historyFilterYear, 10);
+      if (bookingDate.getFullYear() !== selectedYear) return false;
+    }
+
+    // 4. Month Filter (if selected)
+    if (historyFilterMonth !== 'all') {
+      const selectedMonth = parseInt(historyFilterMonth, 10);
+      if ((bookingDate.getMonth() + 1) !== selectedMonth) return false;
+    }
+
+    return true;
   };
 
   const getBookingHistorySortBucket = (booking: Booking) => {
@@ -761,6 +819,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       roomId: booking.roomId,
       title: booking.title || '',
       organizer: booking.organizer || '',
+      email: booking.email || '',
       employeeId: booking.employeeId || '',
       department: booking.department || '',
       deskNumber: booking.deskNumber || '',
@@ -782,12 +841,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       return;
     }
 
+    if (bookingEditForm.email && !/^[^@\s]+@yageo\.com$/i.test(bookingEditForm.email.trim())) {
+      showNotification(language === 'th' ? 'กรุณาใช้อีเมล @yageo.com เท่านั้น' : 'Please use @yageo.com email only.', 'error');
+      return;
+    }
+
     const startTime = new Date(`${bookingEditForm.date}T${String(startHour).padStart(2, '0')}:00:00`);
     const endTime = new Date(`${bookingEditForm.date}T${String(endHour).padStart(2, '0')}:00:00`);
     const success = await onUpdateBooking(editingBooking.id, {
       roomId: bookingEditForm.roomId,
       title: bookingEditForm.title.trim(),
       organizer: bookingEditForm.organizer.trim(),
+      email: bookingEditForm.email.trim(),
       employeeId: bookingEditForm.employeeId.trim(),
       department: bookingEditForm.department,
       deskNumber: bookingEditForm.deskNumber.trim(),
@@ -1005,27 +1070,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {t.signIn}
             </button>
 
-            <div className="relative my-4 flex py-1 items-center">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink mx-3 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-                {t.orContinueWith}
-              </span>
-              <div className="flex-grow border-t border-slate-200"></div>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-700 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center justify-center"
-            >
-              <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.22-.67-.35-1.37-.35-2.09z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
-              </svg>
-              <span>{t.signInWithGoogle}</span>
-            </button>
 
             {loginPresentation === 'modal' && onCancelLogin && (
               <button
@@ -1067,6 +1111,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 {currentUser.role === 'SUPER_ADMIN' ? <ShieldCheck className="w-4 h-4 mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
                 {currentUser.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
             </div>
+            <button
+                type="button"
+                onClick={() => setIsAdminGuideOpen(true)}
+                className="inline-flex items-center text-sm text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors font-semibold border border-brand-100 shadow-sm"
+            >
+                <BookOpen className="w-4 h-4 mr-1.5" />
+                {language === 'th' ? 'คู่มือแอดมิน' : 'Admin Guide'}
+            </button>
             <button 
                 onClick={() => {
                     updateCurrentUser(null);
@@ -1429,7 +1481,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
            </div>
 
-           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
+<div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
               <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
                  <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
                     <div>
@@ -1447,43 +1499,104 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                        />
                     </div>
                  </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-[180px_220px_minmax(0,1fr)_auto] gap-2 items-end">
-                    <div>
-                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ตัวกรอง' : 'Filter'}</label>
+                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end mt-2">
+                    <div className="sm:col-span-2">
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ปี' : 'Year'}</label>
                        <select
-                          value={historyFilterMode}
-                          onChange={(e) => setHistoryFilterMode(e.target.value as 'all' | 'day' | 'week' | 'month' | 'year')}
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                          value={historyFilterYear}
+                          onChange={(e) => {
+                             const yr = e.target.value;
+                             setHistoryFilterYear(yr);
+                             if (yr === 'all') setHistoryFilterMonth('all');
+                          }}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
                        >
-                          <option value="all">{language === 'th' ? 'ทั้งหมด' : 'All'}</option>
-                          <option value="day">{language === 'th' ? 'รายวัน' : 'Specific day'}</option>
-                          <option value="week">{language === 'th' ? 'รายสัปดาห์' : 'Week'}</option>
-                          <option value="month">{language === 'th' ? 'รายเดือน' : 'Month'}</option>
-                          <option value="year">{language === 'th' ? 'รายปี' : 'Year'}</option>
+                          <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Years'}</option>
+                          {availableYears.map(yr => (
+                             <option key={yr} value={yr}>{yr}</option>
+                          ))}
                        </select>
                     </div>
-                    <div>
-                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'วันที่อ้างอิง' : 'Reference date'}</label>
-                       <input
-                          type="date"
-                          lang="en-US"
-                          value={historyFilterDate}
-                          onChange={(e) => setHistoryFilterDate(e.target.value)}
-                          disabled={historyFilterMode === 'all'}
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-100 disabled:text-slate-400"
-                       />
+
+                    <div className="sm:col-span-2">
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เดือน' : 'Month'}</label>
+                       <select
+                          value={historyFilterMonth}
+                          onChange={(e) => setHistoryFilterMonth(e.target.value)}
+                          disabled={historyFilterYear === 'all'}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-50 disabled:text-slate-400 shadow-sm"
+                       >
+                          <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Months'}</option>
+                          {(language === 'th' ? MONTHS_TH : MONTHS_EN).map((m, idx) => (
+                             <option key={idx} value={idx + 1}>{m}</option>
+                          ))}
+                       </select>
                     </div>
-                    <div className="text-xs font-bold text-slate-500 pb-2">
-                       {historyFilterMode === 'all' ? (language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates') : (formatDateInputDisplay(historyFilterDate) || '-')}
+
+                    <div className="sm:col-span-3">
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เจาะจงวันที่' : 'Specific Day'}</label>
+                       <div className="relative">
+                          <input
+                             type="date"
+                             lang="en-US"
+                             value={historyFilterDay}
+                             onChange={(e) => setHistoryFilterDay(e.target.value)}
+                             className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                          />
+                          {historyFilterDay ? (
+                             <button
+                                type="button"
+                                onClick={() => setHistoryFilterDay('')}
+                                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 transition-colors"
+                             >
+                                <X className="w-4 h-4" />
+                             </button>
+                          ) : (
+                             <span className="absolute right-2.5 top-2.5 text-xs text-slate-300 font-bold select-none pointer-events-none">{language === 'th' ? 'ทั้งหมด' : 'All'}</span>
+                          )}
+                       </div>
                     </div>
-                    <button
-                       type="button"
-                       onClick={handleExportBookingHistoryCsv}
-                       className="inline-flex w-full sm:w-auto items-center justify-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
-                    >
-                       <Download className="w-4 h-4 mr-2" />
-                       {language === 'th' ? '\u0E2A\u0E48\u0E07\u0E2D\u0E2D\u0E01 CSV' : 'Export CSV'}
-                    </button>
+
+                    <div className="hidden sm:block sm:col-span-3"></div>
+
+                    <div className="sm:col-span-2">
+                       <button
+                          type="button"
+                          onClick={handleExportBookingHistoryCsv}
+                          className="inline-flex w-full items-center justify-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all active:scale-[0.98]"
+                       >
+                          <Download className="w-4 h-4 mr-2" />
+                          {language === 'th' ? 'ส่งออก CSV' : 'Export CSV'}
+                       </button>
+                    </div>
+
+                    <div className="sm:col-span-12 text-xs font-bold text-slate-500 pt-1">
+                       {(() => {
+                          const segments: string[] = [];
+
+                          if (historyFilterDay) {
+                             segments.push(language === 'th' 
+                                ? `เฉพาะวันที่: ${formatDateInputDisplay(historyFilterDay)}` 
+                                : `Specific Date: ${formatDateInputDisplay(historyFilterDay)}`);
+                          }
+
+                          if (historyFilterYear !== 'all') {
+                             const monthIndex = historyFilterMonth === 'all' ? -1 : parseInt(historyFilterMonth, 10) - 1;
+                             const monthLabel = monthIndex === -1
+                                ? (language === 'th' ? 'ทุกเดือน' : 'All Months')
+                                : (language === 'th' ? MONTHS_TH[monthIndex] : MONTHS_EN[monthIndex]);
+                             segments.push(language === 'th'
+                                ? `ช่วงเวลา: ${monthLabel} ปี ${historyFilterYear}`
+                                : `Period: ${monthLabel} ${historyFilterYear}`);
+                          } else {
+                             if (!historyFilterDay) {
+                                segments.push(language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates');
+                             }
+                          }
+
+                          return segments.join(' | ');
+                       })()}
+                    </div>
                  </div>
               </div>
               <div className="overflow-x-auto max-h-[520px]">
@@ -1491,8 +1604,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[11px] font-bold uppercase tracking-wider text-slate-500 backdrop-blur">
                        <tr>
                           <th className="w-[150px] px-5 py-3">{t.room}</th>
-                          <th className="w-[170px] px-5 py-3">{t.dateTimeCol}</th>
                           <th className="px-5 py-3">{t.eventCol}</th>
+                          <th className="w-[170px] px-5 py-3">{t.dateTimeCol}</th>
                           <th className="w-[170px] px-5 py-3">{t.organizerName}</th>
                           <th className="w-[135px] px-5 py-3">{t.employeeId}</th>
                           <th className="w-[110px] px-5 py-3">{t.department}</th>
@@ -1515,12 +1628,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                    <span className="inline-flex max-w-full items-center truncate rounded-md border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700" title={getRoomName(booking.roomId)}>{getRoomName(booking.roomId)}</span>
                                 </td>
                                 <td className="px-5 py-4 align-top">
-                                   <div className="font-bold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                                   <div className="mt-1 font-mono text-xs font-semibold text-slate-500">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
-                                </td>
-                                <td className="px-5 py-4 align-top">
                                    <div className="truncate font-bold text-slate-800" title={translateText(booking.title, language)}>{translateText(booking.title, language)}</div>
                                    <div className="mt-1 truncate font-mono text-[11px] text-slate-400" title={booking.id}>{booking.id}</div>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <div className="font-bold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                   <div className="mt-1 font-mono text-xs font-semibold text-slate-500">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
                                 </td>
                                 <td className="px-5 py-4 align-top text-slate-600">
                                    <div className="truncate font-bold text-slate-800" title={booking.organizer || '-'}>{booking.organizer || '-'}</div>
@@ -1876,40 +1989,37 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.status}</label>
-                    <select
-                      value={bookingEditForm.status}
-                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, status: e.target.value as BookingStatus })}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                    >
-                      <option value={BookingStatus.CONFIRMED}>{t.confirmed}</option>
-                      <option value={BookingStatus.PENDING}>{t.pendingApproval}</option>
-                      <option value={BookingStatus.VERIFIED}>{t.verified}</option>
-                      <option value={BookingStatus.REJECTED}>{t.rejected}</option>
-                      <option value={BookingStatus.NO_SHOW}>{t.cancelledNoVerification}</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t.bookingTitle}</label>
-                  <input
-                    required
-                    type="text"
-                    value={bookingEditForm.title}
-                    onChange={(e) => setBookingEditForm({ ...bookingEditForm, title: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                  />
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
                     <label className="block text-sm font-semibold text-slate-700 mb-1">{t.organizerName}</label>
                     <input
                       required
                       type="text"
                       value={bookingEditForm.organizer}
                       onChange={(e) => setBookingEditForm({ ...bookingEditForm, organizer: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{language === 'th' ? 'อีเมลผู้จอง' : 'Booker Email'}</label>
+                  <input
+                    required
+                    type="email"
+                    value={bookingEditForm.email}
+                    onChange={(e) => setBookingEditForm({ ...bookingEditForm, email: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    placeholder="username@yageo.com"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.bookingTitle}</label>
+                    <input
+                      required
+                      type="text"
+                      value={bookingEditForm.title}
+                      onChange={(e) => setBookingEditForm({ ...bookingEditForm, title: e.target.value })}
                       className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
                     />
                   </div>
@@ -1996,10 +2106,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </div>
 
               <div className="flex flex-shrink-0 justify-end space-x-3 p-6 border-t border-slate-100 bg-slate-50">
-                <button type="button" onClick={() => setEditingBooking(null)} className="px-4 py-2 text-slate-600 font-semibold hover:bg-slate-200 rounded-lg transition-colors">
+                <button
+                  type="button"
+                  onClick={() => setEditingBooking(null)}
+                  className="px-5 py-2.5 border border-slate-300 text-slate-700 bg-white hover:bg-slate-50 hover:text-slate-900 rounded-xl text-xs font-bold transition-all shadow-sm active:scale-95"
+                >
                   {t.cancel}
                 </button>
-                <button type="submit" className="px-6 py-2 bg-brand-500 text-white font-bold rounded-lg hover:bg-brand-600 transition-colors shadow-sm">
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl text-xs font-bold shadow-md hover:shadow-lg transition-all active:scale-[0.98]"
+                >
                   {t.save}
                 </button>
               </div>
@@ -2463,6 +2580,76 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
       />
+
+      {isAdminGuideOpen && (() => {
+        const c = copyAdminGuide[language];
+        return (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
+            <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col h-[82vh] animate-in zoom-in-95 duration-300">
+              <div className="bg-slate-50 px-6 py-4 border-b border-slate-150 flex items-center justify-between flex-shrink-0">
+                <div className="flex items-center space-x-2.5">
+                  <BookOpen className="w-5 h-5 text-brand-600" />
+                  <h2 className="font-bold text-slate-850 text-base sm:text-lg">{c.title}</h2>
+                </div>
+                <button type="button" onClick={() => setIsAdminGuideOpen(false)} className="p-1.5 hover:bg-slate-200/70 text-slate-400 hover:text-slate-600 rounded-lg transition-colors" aria-label={t.close}>
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto flex-grow text-slate-800 scrollbar-thin text-sm leading-relaxed space-y-6">
+                <div>
+                  <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
+                     <Building2 className="w-4 h-4 mr-2" />
+                     {c.tabs.rooms}
+                  </h3>
+                  <div className="mt-3 space-y-3">
+                     {c.rooms.map(([title, desc]) => (
+                        <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
+                           <h4 className="font-bold text-xs text-slate-900">{title}</h4>
+                           <p className="text-xs text-slate-600 mt-1">{desc}</p>
+                        </div>
+                     ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
+                     <Calendar className="w-4 h-4 mr-2" />
+                     {c.tabs.bookings}
+                  </h3>
+                  <div className="mt-3 space-y-3">
+                     {c.bookings.map(([title, desc]) => (
+                        <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
+                           <h4 className="font-bold text-xs text-slate-900">{title}</h4>
+                           <p className="text-xs text-slate-600 mt-1">{desc}</p>
+                        </div>
+                     ))}
+                  </div>
+                </div>
+
+                <div>
+                  <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
+                     <UserCog className="w-4 h-4 mr-2" />
+                     {c.tabs.users}
+                  </h3>
+                  <div className="mt-3 space-y-3">
+                     {c.users.map(([title, desc]) => (
+                        <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
+                           <h4 className="font-bold text-xs text-slate-900">{title}</h4>
+                           <p className="text-xs text-slate-600 mt-1">{desc}</p>
+                        </div>
+                     ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50 px-6 py-4 border-t border-slate-150 flex justify-end flex-shrink-0">
+                <button type="button" onClick={() => setIsAdminGuideOpen(false)} className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-md active:scale-95">{t.close}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

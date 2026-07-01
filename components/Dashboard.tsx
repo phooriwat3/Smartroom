@@ -29,6 +29,8 @@ import CheckInValidationModal from './CheckInValidationModal';
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR, DEPARTMENTS } from '../constants';
 import { BookingDisplayState, getBookingDisplayState as getSharedBookingDisplayState, isBookingNoCheckIn } from '../utils/bookingStatus';
 
+export type DashboardMainView = 'status' | 'timeline';
+
 interface DashboardProps {
   rooms: Room[];
   bookings: Booking[];
@@ -39,6 +41,8 @@ interface DashboardProps {
   onUpdateBooking?: (id: string, updatedFields: Partial<Booking>) => Promise<boolean>;
   selectedRoomId: string;
   setSelectedRoomId: (id: string) => void;
+  activeView?: DashboardMainView;
+  onActiveViewChange?: (view: DashboardMainView) => void;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -50,7 +54,9 @@ const Dashboard: React.FC<DashboardProps> = ({
   onConfirmBooking,
   onUpdateBooking,
   selectedRoomId,
-  setSelectedRoomId
+  setSelectedRoomId,
+  activeView,
+  onActiveViewChange
 }) => {
   const t = TRANSLATIONS[language];
   const checkInWindowTooltip = language === 'th'
@@ -132,7 +138,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [selectedHours, setSelectedHours] = useState<number[]>([]);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [allRoomsSubView, setAllRoomsSubView] = useState<'cards' | 'matrix'>('cards');
+  const [internalActiveView, setInternalActiveView] = useState<DashboardMainView>('status');
+  const dashboardActiveView = activeView || internalActiveView;
+  const setDashboardActiveView = (view: DashboardMainView) => {
+    setInternalActiveView(view);
+    onActiveViewChange?.(view);
+  };
   const [checkInBooking, setCheckInBooking] = useState<Booking | null>(null);
 
   // Load selected room details
@@ -168,7 +179,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   };
 
   useEffect(() => {
-    if (selectedRoomId !== 'ALL' || allRoomsSubView !== 'matrix' || !isToday) return;
+    if (selectedRoomId !== 'ALL' || dashboardActiveView !== 'timeline' || !isToday) return;
 
     const currentHourIndex = hours.findIndex(hour => hour === currentTimelineHour);
     if (currentHourIndex < 0) return;
@@ -180,7 +191,7 @@ const Dashboard: React.FC<DashboardProps> = ({
         behavior: 'smooth'
       });
     });
-  }, [allRoomsSubView, currentTimelineHour, hours, isToday, selectedRoomId]);
+  }, [dashboardActiveView, currentTimelineHour, hours, isToday, selectedRoomId]);
 
   const getMaintenanceAt = (room: Room, targetDateStr: string, hour?: number): { closed: boolean; reason?: string } => {
     const currentClosure = isRoomClosedAt(room, targetDateStr, hour, liveTime);
@@ -807,8 +818,8 @@ const Dashboard: React.FC<DashboardProps> = ({
             <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
               <button
                 type="button"
-                onClick={() => setAllRoomsSubView('cards')}
-                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${allRoomsSubView === 'cards'
+                onClick={() => setDashboardActiveView('status')}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${dashboardActiveView === 'status'
                   ? 'bg-white text-brand-605 shadow-sm font-bold text-brand-600'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
                   }`}
@@ -818,8 +829,8 @@ const Dashboard: React.FC<DashboardProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setAllRoomsSubView('matrix')}
-                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${allRoomsSubView === 'matrix'
+                onClick={() => setDashboardActiveView('timeline')}
+                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${dashboardActiveView === 'timeline'
                   ? 'bg-white text-brand-605 shadow-sm font-bold text-brand-600'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
                   }`}
@@ -835,7 +846,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           </div>
 
           {/* Subview 1: Status Cards */}
-          {allRoomsSubView === 'cards' && (
+          {dashboardActiveView === 'status' && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
               {sortedRooms.map(room => {
                 const roomStats = getRoomStateAtDateStr(room, getAllBookingsForDate, isToday, liveTime);
@@ -1035,7 +1046,7 @@ const Dashboard: React.FC<DashboardProps> = ({
           )}
 
           {/* Subview 2: Timeline Grid Heatmap */}
-          {allRoomsSubView === 'matrix' && (
+          {dashboardActiveView === 'timeline' && (
             <div className="bg-white rounded-xl shadow-sm border border-cyan-100 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
               <div ref={timelineGridScrollRef} className="overflow-x-auto border-b border-cyan-100">
                 <table className="w-full text-sm border-collapse timeline-grid-table">

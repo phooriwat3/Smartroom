@@ -1,4 +1,4 @@
-﻿import { Room } from './types';
+import { Room } from './types';
 import { BOOKING_START_HOUR, BOOKING_END_HOUR } from './constants';
 
 export const TRANSLATIONS = {
@@ -40,6 +40,7 @@ export const TRANSLATIONS = {
     startTime: "Start Time",
     endTime: "End Time",
     cancel: "Cancel",
+    save: "Save",
     confirm: "Confirm",
     errSelectDateTime: "Please select date, start time, and end time.",
     errSelectDept: "Please select a department.",
@@ -277,9 +278,9 @@ export const TRANSLATIONS = {
   th: {
     roomOverview: "ภาพรวมห้องประชุม",
     dashboard: "แดชบอร์ดแสดงเวลา",
-    adminPanel: "ระบบจัดการ (แอดมิน)",
-    menu: "แผนผังเมนูหลัก",
-    filterRooms: "กรองประเภทห้อง",
+    adminPanel: "ระบบจัดแอดมิน",
+    menu: "เมนูหลัก",
+    filterRooms: "ประเภทห้อง",
     allRooms: "ห้องประชุมทั้งหมด",
     meetingRoom: "ห้องประชุม",
     receptionArea: "พื้นที่รับรอง",
@@ -312,6 +313,7 @@ export const TRANSLATIONS = {
     startTime: "เวลาเข้างาน",
     endTime: "เวลาออกห้อง",
     cancel: "ยกเลิก",
+    save: "บันทึก",
     confirm: "ยืนยัน",
     errSelectDateTime: "กรุณาตรวจสอบวันที่ เวลาเริ่มต้น และเวลาสิ้นสุดให้ถูกต้อง",
     errSelectDept: "กรุณาระบุกลุ่มแผนกของคุณ",

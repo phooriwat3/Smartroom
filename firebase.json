@@ -34,7 +34,7 @@
         },
         {
           "source": "**",
-          "destination": "https://tokinsmartroom-495306.web.app",
+          "destination": "https://tokinsmartroom-495306.web.app/",
           "type": 301
         }
       ]
@@ -55,7 +55,7 @@
         },
         {
           "source": "**",
-          "destination": "https://tokinsmartroom-495306.web.app",
+          "destination": "https://tokinsmartroom-495306.web.app/",
           "type": 301
         }
       ]
