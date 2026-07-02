@@ -23,7 +23,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions } from '../translations';
-import { getBookingDepartmentClass } from '../bookingVisualStyles';
+import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState } from '../bookingVisualStyles';
 import CheckInValidationModal from './CheckInValidationModal';
 
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR, DEPARTMENTS } from '../constants';
@@ -281,12 +281,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     return t.confirmed;
   };
 
-  const getBookingStatusBadgeClass = (state: BookingDisplayState) => {
+  const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string) => {
     if (state === 'noCheckIn') return 'bg-rose-100 text-rose-800 border-rose-200';
     if (state === 'pending') return 'bg-orange-100 text-orange-800 border-orange-200';
+
+    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
+    if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900 border-sky-200'} animate-pulse`;
+    if (departmentBadgeClass) return departmentBadgeClass;
     if (state === 'waitForVerify') return 'bg-amber-100 text-amber-900 border-amber-200';
     if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border-cyan-200';
-    if (state === 'roomInUse') return 'bg-sky-100 text-sky-900 border-sky-200 animate-pulse';
     if (state === 'used') return 'bg-slate-100 text-slate-600 border-slate-205';
     return 'bg-emerald-100 text-emerald-700 border-emerald-200';
   };
@@ -983,7 +986,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 const b = item.data;
                                 const noCheckIn = isNoCheckIn(b);
                                 return (
-                                  <div key={b.id} className={`p-2 rounded-lg border text-[11px] transition-colors ${getBookingDepartmentClass(b.department)} ${noCheckIn ? 'bg-rose-50 border-rose-200' : b.id === roomStats.currentBooking?.id
+                                  <div key={b.id} className={`p-2 rounded-lg border text-[11px] transition-colors ${getBookingDepartmentClassForState(getBookingDisplayState(b), b.department)} ${noCheckIn ? 'bg-rose-50 border-rose-200' : b.id === roomStats.currentBooking?.id
                                     ? 'bg-orange-50 border-orange-300'
                                     : 'bg-orange-50 border-orange-200 hover:border-orange-300'
                                     }`}>
@@ -1005,7 +1008,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         return (
                                           <span
                                             title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
-                                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${getBookingStatusBadgeClass(displayState)}`}
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${getBookingStatusBadgeClass(displayState, b.department)}`}
                                           >
                                             {getBookingDisplayLabel(b)}
                                           </span>
@@ -1119,7 +1122,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                                   renderedCells.push(
                                     <td key={`${hour}-${booking.id}`} colSpan={colSpan} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClass(booking.department)}
+                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department)}
                                           ${isNoCheckInStatus
                                           ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
                                           : isPending
@@ -1130,7 +1133,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       `}
                                         title={`[${getBookingDisplayLabel(booking)}] ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
-                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
+                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
                                           {getBookingDisplayLabel(booking)}
                                         </span>
                                         <div className="truncate text-[10px] text-slate-800 font-bold w-full">
@@ -1270,7 +1273,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             });
                           }
                         }}
-                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClass(booking.department) : ''}
+                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department) : ''}
                           ${status === 'occupied'
                             ? isNoCheckInStatus
                               ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold cursor-not-allowed'
@@ -1302,7 +1305,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {booking?.organizer || '-'}
                             </span>
                             {booking && (
-                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
+                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
                                 {getBookingDisplayLabel(booking)}
                               </span>
                             )}
@@ -1477,13 +1480,13 @@ const Dashboard: React.FC<DashboardProps> = ({
                     const noCheckIn = isNoCheckIn(b);
                     const displayState = getBookingDisplayState(b);
                     return (
-                      <div key={b.id} className={`rounded-lg border p-3.5 shadow-sm transition-all ${getBookingDepartmentClass(b.department)} ${noCheckIn ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200 hover:border-orange-300 hover:bg-orange-50/60 hover:shadow-md'}`}>
+                      <div key={b.id} className={`rounded-lg border p-3.5 shadow-sm transition-all ${getBookingDepartmentClassForState(getBookingDisplayState(b), b.department)} ${noCheckIn ? 'bg-rose-50 border-rose-200' : 'bg-white border-slate-200 hover:border-orange-300 hover:bg-orange-50/60 hover:shadow-md'}`}>
                         <div className="space-y-2 text-sm font-semibold text-slate-800">
                           <div className="flex items-center justify-between gap-4 border-b border-slate-100 pb-2">
                             <span className="font-mono text-xs font-extrabold tracking-wide text-slate-700 whitespace-nowrap">
                               {formatTimeLocal(b.startTime, language)} - {formatTimeLocal(b.endTime, language)}
                             </span>
-                            <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border shrink-0 shadow-xs ${getBookingStatusBadgeClass(displayState)}`}>
+                            <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold border shrink-0 shadow-xs ${getBookingStatusBadgeClass(displayState, b.department)}`}>
                               {getBookingDisplayLabel(b)}
                             </span>
                           </div>

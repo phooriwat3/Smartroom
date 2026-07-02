@@ -4,6 +4,7 @@ import { Users, Monitor, CalendarPlus } from 'lucide-react';
 import { TRANSLATIONS, formatTimeString, translateText, isRoomClosedAt, isRoomCurrentlyClosed } from '../translations';
 import { BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 import { BookingDisplayState, getBookingDisplayState as getSharedBookingDisplayState } from '../utils/bookingStatus';
+import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState, getBookingDepartmentDotClass } from '../bookingVisualStyles';
 
 interface RoomCardProps {
   room: Room;
@@ -32,14 +33,13 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
     return t.confirmed;
   };
 
-  const getBookingStatusBadgeClass = (state: BookingDisplayState) => {
+  const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string) => {
     if (state === 'noCheckIn') return 'bg-rose-100 text-rose-800';
     if (state === 'pending') return 'bg-orange-100 text-orange-800';
-    if (state === 'waitForVerify') return 'bg-amber-100 text-amber-900';
-    if (state === 'verified') return 'bg-cyan-100 text-cyan-800';
-    if (state === 'roomInUse') return 'bg-sky-100 text-sky-900 animate-pulse';
-    if (state === 'used') return 'bg-slate-100 text-slate-600';
-    return 'bg-emerald-100 text-emerald-700';
+
+    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
+    if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900'} animate-pulse`;
+    return departmentBadgeClass || 'bg-emerald-100 text-emerald-700';
   };
 
 
@@ -135,13 +135,13 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
               {todaysBookings.slice(0, 2).map(booking => {
                 const displayState = getBookingDisplayState(booking);
                 return (
-                <div key={booking.id} className="flex justify-between items-center gap-2 text-sm rounded-lg px-2 py-1 bg-orange-50 border border-orange-200">
+                <div key={booking.id} className={`flex justify-between items-center gap-2 text-sm rounded-lg px-2 py-1 border ${getBookingDepartmentClassForState(displayState, booking.department)}`}>
                   <div className="flex items-center truncate min-w-0">
-                    <span className="w-2 h-2 rounded-full mr-2 flex-shrink-0 bg-orange-500"></span>
-                    <span className="text-orange-900 font-medium truncate">{translateText(booking.title, language)}</span>
+                    <span className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${getBookingDepartmentDotClass(booking.department)}`}></span>
+                    <span className="font-medium truncate text-inherit">{translateText(booking.title, language)}</span>
                     <span
                       title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
-                      className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-bold whitespace-nowrap ${getBookingStatusBadgeClass(displayState)}`}
+                      className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-bold whitespace-nowrap ${getBookingStatusBadgeClass(displayState, booking.department)}`}
                     >
                       {getBookingDisplayLabel(booking)}
                     </span>

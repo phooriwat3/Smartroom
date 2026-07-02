@@ -215,6 +215,14 @@ const getAdminAuthPayload = (user: AdminUser) => ({
   password: user.password || '',
   role: normalizeStoredAdminRole(user.role),
 });
+const getFirebaseErrorDetails = (error: unknown) => {
+  const maybeError = error as { code?: unknown; message?: unknown; details?: unknown };
+  return {
+    code: typeof maybeError?.code === 'string' ? maybeError.code : '',
+    message: error instanceof Error ? error.message : String(error),
+    details: maybeError?.details,
+  };
+};
 
 const SmartRoomApplication: React.FC = () => {
   // --- LANGUAGE STATE ---
@@ -754,18 +762,12 @@ const SmartRoomApplication: React.FC = () => {
   const handleDeleteBooking = async (id: string) => {
     setConfirmModal({
       isOpen: true,
-      title: language === 'th' ? 'ยืนยันการลบการจอง' : 'Confirm Delete Booking',
+      title: 'Confirm Delete Booking',
       message: t.confirmDeleteBooking,
       isDanger: true,
-      confirmText: language === 'th' ? 'ลบข้อมูล' : 'Delete',
-      cancelText: language === 'th' ? 'ยกเลิก' : 'Cancel',
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
       onConfirm: async () => {
-        // Step 1: Remove immediately from local state and mark as deleted
-        // This prevents onSnapshot from restoring it even if Firebase delete fails
-        deletedBookingIdsRef.current.add(id);
-        setBookings(prev => prev.filter(b => b.id !== id));
-
-        // Step 2: Try to delete from Firebase in background
         try {
           if (adminUser) {
             const deleteBookingAsAdmin = httpsCallable(functions, 'deleteBookingAsAdmin');
@@ -776,36 +778,35 @@ const SmartRoomApplication: React.FC = () => {
           } else {
             await deleteDoc(doc(db, 'bookings', id));
           }
+          deletedBookingIdsRef.current.add(id);
+          setBookings(prev => prev.filter(b => b.id !== id));
           showNotification(
-            language === 'th' ? 'ลบข้อมูลการจองสำเร็จแล้ว' : 'Booking successfully deleted',
+            'Booking successfully deleted',
             'success'
           );
         } catch (e) {
-          const errMsg = e instanceof Error ? e.message : String(e);
-          const isPermissionDenied = errMsg.toLowerCase().includes('permission') || errMsg.toLowerCase().includes('missing or insufficient') || errMsg.toLowerCase().includes('firestore');
-          console.warn("Firestore delete failed (booking kept hidden locally):", errMsg);
-
-          if (isPermissionDenied) {
-            // UI already updated above — just show a soft warning
-            showNotification(
-              language === 'th'
-                ? 'ลบออกจากหน้าจอแล้ว (จะกลับมาหลัง Refresh — โปรด Deploy Firebase Rules)'
-                : 'Hidden from view (will reappear on refresh — please Deploy Firebase Rules)',
-              'info'
-            );
-          } else {
-            showNotification(
-              language === 'th' ? `ลบข้อมูลไม่สำเร็จ: ${errMsg}` : `Delete failed: ${errMsg}`,
-              'error'
-            );
-          }
+          const err = getFirebaseErrorDetails(e);
+          console.error('Delete failed', {
+            itemType: 'booking',
+            collection: 'bookings',
+            documentId: id,
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          });
+          showNotification(
+            `Booking delete failed: ${err.message}`,
+            'error'
+          );
+          try {
+            handleFirestoreError(e, OperationType.DELETE, `bookings/${id}`);
+          } catch (loggingError) { }
         }
 
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
     });
   };
-
   const handleUpdateBooking = async (id: string, updatedFields: Partial<Booking>) => {
     try {
       await updateDoc(doc(db, 'bookings', id), updatedFields);
@@ -1022,27 +1023,45 @@ const SmartRoomApplication: React.FC = () => {
   const handleDeleteRoom = async (id: string) => {
     setConfirmModal({
       isOpen: true,
-      title: language === 'th' ? 'ยืนยันการลบห้องประชุม' : 'Confirm Delete Room',
+      title: 'Confirm Delete Room',
       message: t.confirmDeleteRoom,
       isDanger: true,
-      confirmText: language === 'th' ? 'ลบห้อง' : 'Delete Room',
-      cancelText: language === 'th' ? 'ยกเลิก' : 'Cancel',
+      confirmText: 'Delete Room',
+      cancelText: 'Cancel',
       onConfirm: async () => {
+        const room = rooms.find(item => item.id === id);
         try {
-          await deleteDoc(doc(db, 'rooms', id));
-          // Clean up related bookings
-          const relatedBookings = bookings.filter(b => b.roomId === id);
-          for (const b of relatedBookings) {
-            await deleteDoc(doc(db, 'bookings', b.id));
-          }
+          const deleteRoomAsAdmin = httpsCallable(functions, 'deleteRoomAsAdmin');
+          await deleteRoomAsAdmin({ roomId: id });
+          setRooms(prev => prev.filter(item => item.id !== id));
+          setBookings(prev => prev.filter(booking => booking.roomId !== id));
+          showNotification(
+            `Room ${room?.name || id} deleted successfully`,
+            'success'
+          );
         } catch (e) {
-          handleFirestoreError(e, OperationType.DELETE, `rooms/${id}`);
+          const err = getFirebaseErrorDetails(e);
+          console.error('Delete failed', {
+            itemType: 'room',
+            collection: 'rooms',
+            documentId: id,
+            roomName: room?.name,
+            code: err.code,
+            message: err.message,
+            details: err.details,
+          });
+          showNotification(
+            `Room delete failed: ${err.message}`,
+            'error'
+          );
+          try {
+            handleFirestoreError(e, OperationType.DELETE, `rooms/${id}`);
+          } catch (loggingError) { }
         }
         setConfirmModal(prev => ({ ...prev, isOpen: false }));
       }
     });
   };
-
   const sendVerificationEmail = async (bookingId: string, email?: string) => {
     if (!isYageoEmail(email)) {
       return null;

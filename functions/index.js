@@ -1038,6 +1038,101 @@ exports.saveRoomAsAdmin = onCall(APP_HTTPS_OPTIONS, async (request) => {
   }
 });
 
+exports.deleteRoomAsAdmin = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  let roomId = "";
+  try {
+    const data = request.data || {};
+    roomId = assertSafeDocumentId(data.roomId, "roomId");
+
+    if (!(await isFirebaseAdminAuth(request))) {
+      throw new HttpsError("permission-denied", "Only authorized Admin users can delete room records.");
+    }
+
+    const roomRef = db.collection("rooms").doc(roomId);
+    const roomSnap = await roomRef.get();
+    if (!roomSnap.exists) {
+      throw new HttpsError("not-found", `Room document not found: rooms/${roomId}`);
+    }
+
+    const relatedBookingsSnap = await db
+      .collection("bookings")
+      .where("roomId", "==", roomId)
+      .get();
+
+    const relatedBookingDocs = relatedBookingsSnap.docs;
+    let deletedBookingCount = 0;
+
+    for (let index = 0; index < relatedBookingDocs.length; index += 449) {
+      const batch = db.batch();
+      const chunk = relatedBookingDocs.slice(index, index + 449);
+
+      for (const bookingDoc of chunk) {
+        batch.delete(bookingDoc.ref);
+        deletedBookingCount += 1;
+      }
+
+      if (index + 449 >= relatedBookingDocs.length) {
+        batch.delete(roomRef);
+      }
+
+      await batch.commit();
+    }
+
+    if (relatedBookingDocs.length === 0) {
+      const batch = db.batch();
+      batch.delete(roomRef);
+      await batch.commit();
+    }
+
+    const verifySnap = await roomRef.get();
+    if (verifySnap.exists) {
+      throw new HttpsError("internal", `Room document still exists after delete: rooms/${roomId}`);
+    }
+
+    return {
+      deleted: true,
+      roomId,
+      path: `rooms/${roomId}`,
+      collection: "rooms",
+      deletedRelatedBookings: deletedBookingCount,
+      relatedBookingCollection: "bookings",
+      projectId: PROJECT_ID,
+      databaseId: DATABASE_ID,
+    };
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      console.error("deleteRoomAsAdmin failed", {
+        itemType: "room",
+        collection: "rooms",
+        documentId: roomId,
+        code: error && error.code,
+        message: error && error.message,
+      });
+      throw error;
+    }
+
+    console.error("deleteRoomAsAdmin failed", {
+      itemType: "room",
+      collection: "rooms",
+      documentId: roomId,
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `Room deletion failed: ${error && error.message ? error.message : String(error)}`,
+      {
+        code: error && error.code,
+        message: error && error.message,
+        collection: "rooms",
+        documentId: roomId,
+      }
+    );
+  }
+});
+
 function sanitizeAdminAccount(rawAdmin) {
   if (!rawAdmin || typeof rawAdmin !== "object") {
     throw new HttpsError("invalid-argument", "adminAccount is required.");

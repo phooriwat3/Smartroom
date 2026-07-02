@@ -4,12 +4,13 @@ import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR 
 import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
-import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, setDoc, doc } from 'firebase/firestore';
 import { signInAnonymously } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType } from '../firebase';
 import { AdminGuideModal } from './admin/AdminGuideModal';
 import { EditBookingModal } from './admin/EditBookingModal';
+import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState, getBookingDepartmentDotClass } from '../bookingVisualStyles';
 
 export const CLOSURE_REASONS = [
   { key: 'Renovation', labelEn: 'Renovation', labelTh: 'ปิดปรับปรุงชั่วคราว' },
@@ -444,15 +445,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         cancelText: t.cancel,
         onConfirm: async () => {
           try {
-            await deleteDoc(doc(db, 'admins', id));
+            const deleteAdminAccount = httpsCallable(functions, 'deleteAdminAccount');
+            await deleteAdminAccount({ targetAdminDocId: id });
+            showNotification('Admin deleted successfully.', 'success');
           } catch (e) {
-            handleFirestoreError(e, OperationType.DELETE, `admins/${id}`);
+            const err = e as { code?: string; message?: string; details?: unknown };
+            const message = err?.message || String(e);
+            console.error('Delete failed', {
+              itemType: 'adminAccount',
+              collection: 'admins',
+              documentId: id,
+              code: err?.code || '',
+              message,
+              details: err?.details,
+            });
+            showNotification(`Admin delete failed: ${message}`, 'error');
+            try {
+              handleFirestoreError(e, OperationType.DELETE, `admins/${id}`);
+            } catch (loggingError) { }
           }
           setConfirmModal(prev => ({ ...prev, isOpen: false }));
         }
       });
   };
-
   const getRoomName = (roomId: string) => {
     return rooms.find(r => r.id === roomId)?.name || t.unknownRoom;
   };
@@ -922,16 +937,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return t.confirmed;
   };
 
-  const getAdminBookingStatusClass = (state: AdminBookingDisplayState) => {
+  const getAdminBookingStatusClass = (state: AdminBookingDisplayState, department?: string) => {
     if (state === 'pending') return 'bg-orange-100 text-orange-700';
+    if (state === 'rejected') return 'bg-red-100 text-red-700';
+
+    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
+    if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'} animate-pulse`;
+    if (departmentBadgeClass) return departmentBadgeClass;
     if (state === 'waitForVerify') return 'bg-violet-100 text-violet-700';
     if (state === 'verified') return 'bg-blue-100 text-blue-700';
-    if (state === 'roomInUse') return 'bg-blue-100 text-blue-700 ring-1 ring-blue-200';
     if (state === 'used') return 'bg-slate-100 text-slate-600';
-    if (state === 'rejected') return 'bg-red-100 text-red-700';
     return 'bg-green-100 text-green-700';
   };
-
   const getRoomTypeLabel = (type: string) => {
     if (type === 'Meeting') return t.meetingRoom;
     if (type === 'Reception') return t.receptionArea;
@@ -1269,7 +1286,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         filteredBookings.map((booking) => {
                             const displayState = getAdminBookingDisplayState(booking);
                             return (
-                        <tr key={booking.id} className="hover:bg-slate-50 transition-colors">
+                        <tr key={booking.id} className={`transition-colors ${getBookingDepartmentClassForState(displayState, booking.department)} hover:shadow-sm`}>
                             <td className="px-6 py-4">
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">
                                     {getRoomName(booking.roomId)}
@@ -1295,7 +1312,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         {booking.employeeId || 'N/A'}
                                     </div>
                                     <div className="flex items-center text-xs text-slate-400">
-                                        <Building2 className="w-3 h-3 mr-1.5" />
+                                        <span className={`w-2 h-2 rounded-full mr-1.5 ${getBookingDepartmentDotClass(booking.department)}`}></span>
                                         {formatDepartment(booking.department) || '-'}
                                     </div>
                                     {booking.deskNumber && (
@@ -1309,7 +1326,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                             </td>
                             <td className="px-6 py-4 mr-0">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState)}`}>
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState, booking.department)}`}>
                                     {getAdminBookingStatusLabel(booking)}
                                 </span>
                             </td>
@@ -1647,7 +1664,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           const displayState = getAdminBookingDisplayState(booking);
                           const departmentDisplayName = formatDepartment(booking.department);
                           return (
-                             <tr key={booking.id} className="group transition-colors hover:bg-indigo-50/30">
+                             <tr key={booking.id} className={`group transition-colors ${getBookingDepartmentClassForState(displayState, booking.department)} hover:shadow-sm`}>
                                 <td className="px-5 py-4 align-top">
                                    <span className="inline-flex max-w-full items-center truncate rounded-md border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700" title={getRoomName(booking.roomId)}>{getRoomName(booking.roomId)}</span>
                                 </td>
@@ -1667,7 +1684,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                    <span className="font-mono text-xs font-bold text-slate-600">{booking.employeeId || '-'}</span>
                                 </td>
                                 <td className="px-5 py-4 align-top">
-                                   <span className="inline-flex min-w-10 items-center justify-center rounded-md border border-indigo-100 bg-indigo-50 px-2 py-1 font-mono text-xs font-bold uppercase text-indigo-700">{departmentDisplayName || '-'}</span>
+                                   <span className={`inline-flex min-w-10 items-center justify-center rounded-md border px-2 py-1 font-mono text-xs font-bold uppercase ${getBookingDepartmentBadgeClass(booking.department)}`}>{departmentDisplayName || '-'}</span>
                                 </td>
                                 <td className="px-5 py-4 align-top">
                                    {booking.deskNumber ? (
@@ -1677,7 +1694,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                    )}
                                 </td>
                                 <td className="px-5 py-4 align-top">
-                                   <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${getAdminBookingStatusClass(displayState)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                                   <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${getAdminBookingStatusClass(displayState, booking.department)}`}>{getAdminBookingStatusLabel(booking)}</span>
                                 </td>
                                 <td className="px-5 py-4 text-right align-top">
                                    <div className="flex items-center justify-end space-x-1.5">

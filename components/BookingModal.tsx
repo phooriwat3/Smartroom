@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Room, Booking, BookingStatus } from '../types';
 import { X, Calendar, Clock, User, AlertCircle, Building2, IdCard, Trash2 } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeValue, translateText, isRoomClosedAt, formatDepartment, getDepartmentSelectOptions } from '../translations';
-import { getBookingDepartmentClass } from '../bookingVisualStyles';
+import { getBookingDepartmentClass, getBookingDepartmentDotClass } from '../bookingVisualStyles';
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 
 interface BookingModalProps {
@@ -324,7 +324,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                             : isSelected
                                                 ? 'bg-orange-500 border-orange-600 text-white font-bold cursor-pointer hover:bg-orange-600 shadow-sm'
                                                 : booking
-                                                    ? 'bg-orange-50 border-orange-200 text-orange-700 cursor-not-allowed font-semibold'
+                                                    ? 'cursor-not-allowed font-semibold'
                                                     : 'bg-white border-slate-200 text-slate-400 hover:border-orange-300 hover:text-orange-500 hover:shadow-sm cursor-pointer'
                                     }`}
                                 title={isPast
@@ -350,8 +350,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                         {booking ? translateText(booking.title, language) : (language === 'th' ? 'เลือกแล้ว (จอง)' : 'Selected')}
                                     </span>
                                 ) : booking ? (
-                                    <span className="text-orange-700 font-bold truncate flex items-center">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mr-1.5 flex-shrink-0"></span>
+                                    <span className="font-bold truncate flex items-center text-inherit">
+                                        <span className={`w-1.5 h-1.5 rounded-full ${getBookingDepartmentDotClass(booking.department)} mr-1.5 flex-shrink-0`}></span>
                                         {translateText(booking.title, language)} ({booking.organizer})
                                     </span>
                                 ) : (
