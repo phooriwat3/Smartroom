@@ -651,9 +651,20 @@ async function isFirebaseSuperAdminAuth(request) {
 async function isFirebaseAdminAuth(request) {
   if (!request || !request.auth) return false;
 
+  // 1. Check custom claims token properties
+  const tokenRole = request.auth.token.role;
+  if (tokenRole === "SUPER_ADMIN" || tokenRole === "super_admin" || tokenRole === "APPROVER" || tokenRole === "approver") {
+    return true;
+  }
+  if (request.auth.token.super_admin === true) {
+    return true;
+  }
+
+  // 2. Check hardcoded developer email fallback
   const email = getAuthEmail(request);
   if (email === "phooriwat456@gmail.com") return true;
 
+  // 3. Check document matching
   const candidateIds = [
     normalizeId(request.auth.uid),
     normalizeId(email),
