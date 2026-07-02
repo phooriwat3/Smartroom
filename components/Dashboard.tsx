@@ -1128,7 +1128,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         }
                                         hover:scale-[1.02] hover:shadow-md cursor-pointer transition-all duration-200
                                       `}
-                                        title={`${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
+                                        title={`[${getBookingDisplayLabel(booking)}] ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
                                         <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking))}`}>
                                           {getBookingDisplayLabel(booking)}
@@ -1160,7 +1160,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         ${isClosedHour
                                         ? 'bg-slate-100 border-slate-300 text-slate-700 font-semibold'
                                         : isPast
-                                          ? 'bg-slate-100 border-slate-205 text-slate-400 font-medium'
+                                          ? 'bg-slate-105 border-slate-200 text-slate-400 font-medium'
                                           : 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100 hover:border-emerald-300 hover:text-emerald-950 cursor-pointer shadow-sm hover:scale-[1.01] transition-all duration-200'
                                       }
                                     `}
@@ -1171,7 +1171,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       }}
                                       title={isClosedHour
                                         ? `${temporarilyDisabledLabel}: ${getDisabledReasonText(closureCheck.reason)}`
-                                        : (language === 'th' ? 'ห้องว่าง' : 'Available')
+                                        : isPast
+                                          ? (language === 'th' ? 'หมดเวลาจอง' : 'Passed')
+                                          : (language === 'th' ? 'ห้องว่าง' : 'Available')
                                       }
                                     >
                                       {isClosedHour ? (
@@ -1179,7 +1181,9 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           {temporarilyDisabledLabel}
                                         </span>
                                       ) : isPast ? (
-                                        <span className="opacity-30">-</span>
+                                        <span className="block w-full truncate text-center text-[9px] font-bold text-slate-400">
+                                          {language === 'th' ? 'หมดเวลา' : 'Passed'}
+                                        </span>
                                       ) : (
                                         <span className="text-[9.5px] text-emerald-600/70">{language === 'th' ? 'ว่าง' : 'Available'}</span>
                                       )}
