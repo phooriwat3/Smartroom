@@ -1430,16 +1430,12 @@ const SmartRoomApplication: React.FC = () => {
           </div>
           <div
             onClick={() => {
-              if (adminUser) {
-                showNotification(language === 'th' ? 'กรุณาออกจากระบบก่อนกลับไปหน้าผู้ใช้งาน' : 'Please log out before returning to User mode', 'info');
-                return;
-              }
               navigateToView('dashboard');
               setSelectedRoomId('ALL');
               setFilterType('All');
               setIsMobileDrawerOpen(false);
             }}
-            className={`flex items-center space-x-2 text-brand-500 mb-6 transition-all ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-85 active:scale-[0.99]'}`}
+            className="flex items-center space-x-2 text-brand-500 mb-6 transition-all cursor-pointer hover:opacity-85 active:scale-[0.99]"
           >
             <LayoutGrid className="w-8 h-8" />
             <span className="text-xl font-bold tracking-tight">TOKIN Smart Room</span>
@@ -1467,15 +1463,11 @@ const SmartRoomApplication: React.FC = () => {
               <div className="space-y-1">
                 <button
                   onClick={() => {
-                    if (adminUser) {
-                      showNotification(language === 'th' ? 'กรุณาออกจากระบบก่อนกลับไปหน้าผู้ใช้งาน' : 'Please log out before returning to User mode', 'info');
-                      return;
-                    }
                     navigateToView('dashboard');
                     setSelectedRoomId('ALL');
                     setIsMobileDrawerOpen(false);
                   }}
-                  className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'dashboard' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'} ${adminUser ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                  className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'dashboard' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'} cursor-pointer`}
                 >
                   <LayoutGrid className="w-5 h-5" />
                   <span>{language === 'th' ? 'แดชบอร์ด' : 'Dashboard'}</span>
@@ -1575,14 +1567,17 @@ const SmartRoomApplication: React.FC = () => {
               </div>
             </div>
           </div>
-        {/* Admin Link at bottom */}
         <div className="p-6 mt-auto border-t border-slate-200">
           <button
             onClick={() => {
-              setIsAdminLoginModalOpen(true);
+              if (adminUser) {
+                navigateToView('admin');
+              } else {
+                setIsAdminLoginModalOpen(true);
+              }
               setIsMobileDrawerOpen(false);
             }}
-            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'admin' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'}`}
+            className={`w-full text-left px-4 py-2.5 rounded-lg text-sm font-medium transition-colors flex items-center space-x-3 ${currentView === 'admin' ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-50'} cursor-pointer`}
           >
             <Settings className="w-5 h-5" />
             <span>{t.adminPanel}</span>
