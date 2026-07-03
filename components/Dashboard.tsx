@@ -343,11 +343,11 @@ const Dashboard: React.FC<DashboardProps> = ({
     return t.confirmed;
   };
 
-  const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string) => {
+  const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string, context?: 'timeline') => {
     if (state === 'noCheckIn') return 'bg-rose-100 text-rose-800 border-rose-200';
     if (state === 'pending') return 'bg-orange-100 text-orange-800 border-orange-200';
 
-    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
+    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department, context ? { context } : undefined) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900 border-sky-200'} animate-pulse`;
     if (departmentBadgeClass) return departmentBadgeClass;
     if (state === 'waitForVerify') return 'bg-amber-100 text-amber-900 border-amber-200';
@@ -1245,7 +1245,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                                   renderedCells.push(
                                     <td key={`${hour}-${booking.id}`} colSpan={colSpan} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department)}
+                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department, { context: 'timeline' })}
                                           ${isNoCheckInStatus
                                           ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
                                           : isPending
@@ -1256,7 +1256,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       `}
                                         title={`[${getBookingDisplayLabel(booking)}] ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
-                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
+                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
                                           {getBookingDisplayLabel(booking)}
                                         </span>
                                         <div className="truncate text-[10px] text-slate-800 font-bold w-full">
@@ -1396,7 +1396,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             });
                           }
                         }}
-                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department) : ''}
+                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department, { context: 'timeline' }) : ''}
                           ${status === 'occupied'
                             ? isNoCheckInStatus
                               ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold cursor-not-allowed'
@@ -1428,7 +1428,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {booking?.organizer || '-'}
                             </span>
                             {booking && (
-                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
+                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
                                 {getBookingDisplayLabel(booking)}
                               </span>
                             )}
@@ -1722,7 +1722,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder={language === 'th' ? 'เช่น ประชุมแผนงาน Q3' : 'e.g. Q3 Strategy Planning'}
+                  placeholder={language === 'th' ? 'ประชุมแผนงาน' : 'Strategy Planning'}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                 />
                 <datalist id="meeting-titles-list">
@@ -1757,7 +1757,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     required
                     value={organizer}
                     onChange={(e) => setOrganizer(e.target.value)}
-                    placeholder={language === 'th' ? 'สมชาย' : 'John'}
+                    placeholder={language === 'th' ? 'Somchai' : 'Somchai'}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                   />
                 </div>
@@ -1793,7 +1793,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   }}
                   onFocus={() => setIsEmailSuggestionsOpen(!selectedEmailUser && email.trim().length >= 2)}
                   onBlur={() => window.setTimeout(() => setIsEmailSuggestionsOpen(false), 150)}
-                  placeholder="name@yageo.com"
+                  placeholder="Somchai.Jaidee@yageo.com"
                   role="combobox"
                   aria-expanded={isEmailSuggestionsOpen}
                   aria-controls="yageo-email-suggestions"
