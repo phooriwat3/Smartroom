@@ -1,12 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole } from '../types';
-import { INITIAL_ADMIN_USERS, DEPARTMENTS } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, ChevronLeft, ChevronRight, BarChart2 } from 'lucide-react';
-import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed } from '../translations';
+import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
+import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen } from 'lucide-react';
+import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
-import { collection, onSnapshot, setDoc, doc, deleteDoc } from 'firebase/firestore';
-import { signInWithPopup, GoogleAuthProvider, signInAnonymously } from 'firebase/auth';
-import { db, auth, handleFirestoreError, OperationType } from '../firebase';
+import { collection, onSnapshot, setDoc, doc } from 'firebase/firestore';
+import { signInAnonymously } from 'firebase/auth';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions, handleFirestoreError, OperationType } from '../firebase';
+import { AdminGuideModal } from './admin/AdminGuideModal';
+import { EditBookingModal } from './admin/EditBookingModal';
+import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState, getBookingDepartmentDotClass } from '../bookingVisualStyles';
 
 export const CLOSURE_REASONS = [
   { key: 'Renovation', labelEn: 'Renovation', labelTh: 'ปิดปรับปรุงชั่วคราว' },
@@ -18,6 +22,116 @@ export const CLOSURE_REASONS = [
   { key: 'System Maintenance', labelEn: 'System Maintenance', labelTh: 'ซ่อมบำรุงระบบเครือข่ายและไอที' },
   { key: 'Other', labelEn: 'Other (Custom)', labelTh: 'อื่นๆ (ระบุเอง)' }
 ];
+
+const MONTHS_TH = [
+  'มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+  'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'
+];
+const MONTHS_EN = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December'
+];
+
+
+
+export const hashPassword = async (password: string): Promise<string> => {
+  if (window.crypto && window.crypto.subtle) {
+    const msgUint8 = new TextEncoder().encode(password);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', msgUint8);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    return hashHex;
+  }
+
+  // Fallback for non-secure contexts (HTTP with local IP address)
+  const rotateRight = (n: number, x: number) => (x >>> n) | (x << (32 - n));
+  const choice = (x: number, y: number, z: number) => (x & y) ^ (~x & z);
+  const majority = (x: number, y: number, z: number) => (x & y) ^ (x & z) ^ (y & z);
+
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
+  ];
+
+  let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a,
+      h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+
+  const utf8 = [];
+  for (let i = 0; i < password.length; i++) {
+    let charcode = password.charCodeAt(i);
+    if (charcode < 0x80) utf8.push(charcode);
+    else if (charcode < 0x800) {
+      utf8.push(0xc0 | (charcode >> 6), 0x80 | (charcode & 0x3f));
+    } else {
+      utf8.push(0xe0 | (charcode >> 12), 0x80 | ((charcode >> 6) & 0x3f), 0x80 | (charcode & 0x3f));
+    }
+  }
+
+  const msgLenBits = utf8.length * 8;
+  utf8.push(0x80);
+  while ((utf8.length + 8) % 64 !== 0) {
+    utf8.push(0x00);
+  }
+  const lenBuffer = new ArrayBuffer(8);
+  const view = new DataView(lenBuffer);
+  view.setUint32(4, msgLenBits);
+  const lenArray = Array.from(new Uint8Array(lenBuffer));
+  utf8.push(...lenArray);
+
+  for (let i = 0; i < utf8.length; i += 64) {
+    const w = new Array(64);
+    for (let j = 0; j < 16; j++) {
+      w[j] = (utf8[i + j * 4] << 24) | (utf8[i + j * 4 + 1] << 16) | (utf8[i + j * 4 + 2] << 8) | (utf8[i + j * 4 + 3]);
+    }
+    for (let j = 16; j < 64; j++) {
+      const s0 = rotateRight(7, w[j - 15]) ^ rotateRight(18, w[j - 15]) ^ (w[j - 15] >>> 3);
+      const s1 = rotateRight(17, w[j - 2]) ^ rotateRight(19, w[j - 2]) ^ (w[j - 2] >>> 10);
+      w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
+    }
+
+    let a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+
+    for (let j = 0; j < 64; j++) {
+      const S1 = rotateRight(6, e) ^ rotateRight(11, e) ^ rotateRight(25, e);
+      const ch = choice(e, f, g);
+      const temp1 = (h + S1 + ch + K[j] + w[j]) | 0;
+      const S0 = rotateRight(2, a) ^ rotateRight(13, a) ^ rotateRight(22, a);
+      const maj = majority(a, b, c);
+      const temp2 = (S0 + maj) | 0;
+
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) | 0;
+    }
+
+    h0 = (h0 + a) | 0;
+    h1 = (h1 + b) | 0;
+    h2 = (h2 + c) | 0;
+    h3 = (h3 + d) | 0;
+    h4 = (h4 + e) | 0;
+    h5 = (h5 + f) | 0;
+    h6 = (h6 + g) | 0;
+    h7 = (h7 + h) | 0;
+  }
+
+  const toHex = (n: number) => {
+    let s = (n >>> 0).toString(16);
+    return s.padStart(8, '0');
+  };
+
+  return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4) + toHex(h5) + toHex(h6) + toHex(h7);
+};
 
 interface AdminPanelProps {
   rooms: Room[];
@@ -35,7 +149,13 @@ interface AdminPanelProps {
   currentUser?: AdminUser | null;
   setCurrentUser?: (user: AdminUser | null) => void;
   onBackToUser?: () => void;
+  loginPresentation?: 'page' | 'modal';
+  onCancelLogin?: () => void;
+  onLoginSuccess?: () => void;
 }
+
+type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected';
+
 
 const AdminPanel: React.FC<AdminPanelProps> = ({ 
   rooms, 
@@ -52,7 +172,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   showNotification,
   currentUser: controlledCurrentUser,
   setCurrentUser: setControlledCurrentUser,
-  onBackToUser
+  onBackToUser,
+  loginPresentation = 'page',
+  onCancelLogin,
+  onLoginSuccess
 }) => {
   const t = TRANSLATIONS[language];
 
@@ -65,13 +188,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
   const [loginUsername, setLoginUsername] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
-  const [loginError, setLoginError] = useState('');
+  const [loginErrorKey, setLoginErrorKey] = useState<'' | 'invalidUserPass'>('');
 
   // Data State with Firebase Persistence
   const [adminUsers, setAdminUsers] = useState<AdminUser[]>([]);
+  const [emailHistory, setEmailHistory] = useState<EmailSentHistoryRecord[]>([]);
+  const [isEmailHistoryLoading, setIsEmailHistoryLoading] = useState(false);
+  const [emailHistoryError, setEmailHistoryError] = useState('');
 
   // Real-time admins listener and seeding on Firestore
   useEffect(() => {
+    if (!currentUser) {
+      setAdminUsers(INITIAL_ADMIN_USERS);
+      return;
+    }
     const unsubscribe = onSnapshot(collection(db, 'admins'), (snapshot) => {
       if (snapshot.empty) {
         console.log("Admins collection is empty, seeding defaults...");
@@ -85,7 +215,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       } else {
         const loadedAdmins: AdminUser[] = [];
         snapshot.forEach((snap) => {
-          loadedAdmins.push(snap.data() as AdminUser);
+          const u = snap.data() as AdminUser;
+          loadedAdmins.push(u);
+          if (u.password && !/^[a-f0-9]{64}$/i.test(u.password)) {
+            (async () => {
+              try {
+                const hashed = await hashPassword(u.password);
+                await setDoc(doc(db, 'admins', u.id), { ...u, password: hashed });
+                console.log(`Successfully migrated admin ${u.username} password to hash.`);
+              } catch (migrateErr) {
+                console.error(`Failed to migrate password for admin ${u.username}:`, migrateErr);
+              }
+            })();
+          }
         });
         setAdminUsers(loadedAdmins);
       }
@@ -95,10 +237,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
   
   // UI State
-  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics'>('bookings');
+  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('analytics');
   
   const sortedRooms = useMemo(() => {
     const order: Record<string, number> = {
@@ -128,20 +270,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     message: '',
     onConfirm: () => {},
   });
-  const [analyticsDateStr, setAnalyticsDateStr] = useState<string>(() => {
-    const d = new Date();
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
   const [searchTerm, setSearchTerm] = useState('');
+  const [historyFilterYear, setHistoryFilterYear] = useState<string>('all');
+  const [historyFilterMonth, setHistoryFilterMonth] = useState<string>('all');
+  const [historyFilterDay, setHistoryFilterDay] = useState<string>('');
+  const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
 
   // Modals
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
+  const [isAdminGuideOpen, setIsAdminGuideOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
     username: '',
     password: '',
@@ -155,15 +295,31 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     employeeId: '',
     phone: ''
   });
-  const passwordErrorMessage = language === 'th'
-    ? 'รหัสผ่านต้องมีอย่างน้อย 8 ตัวอักษร และมีตัวพิมพ์เล็ก ตัวพิมพ์ใหญ่ และตัวเลขอย่างน้อยอย่างละ 1 ตัว'
-    : 'Password must be at least 8 characters and include at least 1 lowercase letter, 1 uppercase letter, and 1 number';
+  const passwordErrorMessage = t.adminPasswordRequirement;
+  const loginErrorMessage = loginErrorKey ? t[loginErrorKey] : '';
   const validatePassword = (password: string) => (
     password.length >= 8 &&
     /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
     /\d/.test(password)
   );
+
+  const completeLogin = (user: AdminUser) => {
+    updateCurrentUser(user);
+    setLoginErrorKey('');
+    if (user.role === 'APPROVER') {
+      setActiveTab('analytics');
+    }
+    onLoginSuccess?.();
+  };
+
+  useEffect(() => {
+    setNewUserFormErrors(prev => ({
+      password: prev.password ? t.adminPasswordRequirement : '',
+      employeeId: prev.employeeId ? t.employeeIdSevenDigits : '',
+      phone: prev.phone ? t.deskPhoneFourDigits : ''
+    }));
+  }, [language, t.adminPasswordRequirement, t.employeeIdSevenDigits, t.deskPhoneFourDigits]);
 
   // Room Form State
   const [roomForm, setRoomForm] = useState<Partial<Room>>({
@@ -177,54 +333,45 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    const user = adminUsers.find(u => u.username === loginUsername && u.password === loginPassword);
+    const hashed = await hashPassword(loginPassword);
     
-    if (user) {
-      try {
-        if (!auth.currentUser) {
-          await signInAnonymously(auth);
+    try {
+      let currentFirebaseUser = auth.currentUser;
+      if (!currentFirebaseUser) {
+        currentFirebaseUser = (await signInAnonymously(auth)).user;
+      }
+
+      const setAdminCustomClaimsFn = httpsCallable(functions, 'setAdminCustomClaims');
+      const res = await setAdminCustomClaimsFn({
+        username: loginUsername,
+        password: hashed
+      });
+
+      const resData = res.data as { success: boolean; user: AdminUser };
+      if (resData.success && resData.user) {
+        if (auth.currentUser) {
+          await auth.currentUser.getIdToken(true);
         }
-      } catch (authErr) {
-        console.warn("Background Firebase Auth login failed (working offline?):", authErr);
+        completeLogin(resData.user);
+      } else {
+        setLoginErrorKey('invalidUserPass');
       }
-      updateCurrentUser(user);
-      setLoginError('');
-      if (user.role === 'APPROVER') {
-          setActiveTab('bookings');
+    } catch (err) {
+      console.warn("Cloud function login failed, falling back to local list matching:", err);
+      const user = adminUsers.find(u => u.username === loginUsername && (u.password === hashed || u.password === loginPassword));
+      if (user) {
+        completeLogin(user);
+      } else {
+        setLoginErrorKey('invalidUserPass');
       }
-    } else {
-      setLoginError(t.invalidUserPass);
     }
   };
 
-  const handleGoogleLogin = async () => {
-    try {
-      const provider = new GoogleAuthProvider();
-      const result = await signInWithPopup(auth, provider);
-      const user = result.user;
-      if (user) {
-        const isSuperMail = user.email === "phooriwat456@gmail.com";
-        const adminDoc = adminUsers.find(u => u.username === user.email || u.id === user.uid);
-        const role: AdminRole = isSuperMail ? 'SUPER_ADMIN' : (adminDoc ? adminDoc.role : 'APPROVER');
-        
-        updateCurrentUser({
-          id: user.uid,
-          username: user.email || user.displayName || 'Google Admin',
-          password: '',
-          role
-        });
-        setLoginError('');
-      }
-    } catch (e) {
-      console.error("Google Authentication Failure", e);
-      setLoginError(language === 'th' ? "การเข้าสู่ระบบด้วย Google ผิดพลาด" : "Google Authentication failed");
-    }
-  };
 
   const handleCreateUser = async (e: React.FormEvent) => {
       e.preventDefault();
       if (currentUser?.role !== 'SUPER_ADMIN') {
-          showNotification(language === 'th' ? "เฉพาะผู้ดูแลหลักระบบเท่านั้นที่สามารถสร้างผู้ดูแลระบบคนอื่นได้" : "Only Super Admins can create new admins", 'error');
+          showNotification(t.onlySuperAdminsCanCreate, 'error');
           return;
       }
 
@@ -234,14 +381,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const passwordError = validatePassword(password) ? '' : passwordErrorMessage;
       const employeeIdError = /^\d{7}$/.test(employeeId)
         ? ''
-        : language === 'th'
-          ? 'รหัสพนักงานต้องเป็นตัวเลข 7 หลัก'
-          : 'Employee ID must be exactly 7 digits';
+        : t.employeeIdSevenDigits;
       const phoneError = /^\d{4}$/.test(phone)
         ? ''
-        : language === 'th'
-          ? 'เบอร์โต๊ะต้องเป็นตัวเลข 4 หลัก'
-          : 'Desk Phone must be exactly 4 digits';
+        : t.deskPhoneFourDigits;
 
       if (passwordError || employeeIdError || phoneError) {
           setNewUserFormErrors({ password: passwordError, employeeId: employeeIdError, phone: phoneError });
@@ -255,11 +398,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           return;
       }
       
+      const hashedPassword = await hashPassword(password);
       const newUserId = Math.random().toString(36).substr(2, 9);
       const newUser: AdminUser = {
           id: newUserId,
           username: newUserForm.username,
-          password,
+          password: hashedPassword,
           role: newUserForm.role,
           employeeId,
           department: newUserForm.department,
@@ -271,7 +415,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         setIsUserModalOpen(false);
         setNewUserForm({ username: '', password: '', employeeId: '', phone: '', department: 'HR', role: 'APPROVER' });
         setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-        showNotification(language === 'th' ? "เพิ่มแอดมินสำเร็จ!" : "Admin created successfully!", 'success');
+        showNotification(t.adminCreatedSuccess, 'success');
       } catch (e) {
         handleFirestoreError(e, OperationType.CREATE, `admins/${newUserId}`);
       }
@@ -281,11 +425,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       if (id === currentUser?.id) {
           setConfirmModal({
             isOpen: true,
-            title: language === 'th' ? "ไม่สามารถดำเนินการได้" : "Action Restricted",
+            title: t.actionRestricted,
             message: t.cannotDeleteSelf,
             isDanger: false,
-            confirmText: language === 'th' ? 'รับทราบ' : 'OK',
-            cancelText: language === 'th' ? 'ปิด' : 'Close',
+            confirmText: t.ok,
+            cancelText: t.close,
             onConfirm: () => {
               setConfirmModal(prev => ({ ...prev, isOpen: false }));
             }
@@ -294,24 +438,38 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       }
       setConfirmModal({
         isOpen: true,
-        title: language === 'th' ? 'ยืนยันการลบแอดมิน' : 'Confirm Delete Admin',
+        title: t.deleteAdminTitle,
         message: t.confirmDeleteUser,
         isDanger: true,
-        confirmText: language === 'th' ? 'ลบออก' : 'Delete',
-        cancelText: language === 'th' ? 'ยกเลิก' : 'Cancel',
+        confirmText: t.deleteButton,
+        cancelText: t.cancel,
         onConfirm: async () => {
           try {
-            await deleteDoc(doc(db, 'admins', id));
+            const deleteAdminAccount = httpsCallable(functions, 'deleteAdminAccount');
+            await deleteAdminAccount({ targetAdminDocId: id });
+            showNotification('Admin deleted successfully.', 'success');
           } catch (e) {
-            handleFirestoreError(e, OperationType.DELETE, `admins/${id}`);
+            const err = e as { code?: string; message?: string; details?: unknown };
+            const message = err?.message || String(e);
+            console.error('Delete failed', {
+              itemType: 'adminAccount',
+              collection: 'admins',
+              documentId: id,
+              code: err?.code || '',
+              message,
+              details: err?.details,
+            });
+            showNotification(`Admin delete failed: ${message}`, 'error');
+            try {
+              handleFirestoreError(e, OperationType.DELETE, `admins/${id}`);
+            } catch (loggingError) { }
           }
           setConfirmModal(prev => ({ ...prev, isOpen: false }));
         }
       });
   };
-
   const getRoomName = (roomId: string) => {
-    return rooms.find(r => r.id === roomId)?.name || 'Unknown Room';
+    return rooms.find(r => r.id === roomId)?.name || t.unknownRoom;
   };
 
   const openAddRoomModal = () => {
@@ -326,8 +484,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       closureReason: '',
       closureStartDate: '',
       closureEndDate: '',
-      closureStartTime: 7,
-      closureEndTime: 24
+      closureStartTime: BOOKING_START_HOUR,
+      closureEndTime: 12
     });
     setAmenitiesString('');
     setIsRoomModalOpen(true);
@@ -335,14 +493,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const openEditRoomModal = (room: Room) => {
     setEditingRoom(room);
+    const closureStartTime = room.closureStartTime !== undefined ? room.closureStartTime : BOOKING_START_HOUR;
+    const rawClosureEndTime = room.closureEndTime !== undefined ? room.closureEndTime : 12;
+    const closureEndTime = rawClosureEndTime > closureStartTime && rawClosureEndTime <= BOOKING_END_HOUR
+      ? rawClosureEndTime
+      : Math.min(Math.max(closureStartTime + 1, 12), BOOKING_END_HOUR);
     setRoomForm({ 
       ...room,
       isClosed: room.isClosed || false,
       closureReason: room.closureReason || '',
       closureStartDate: room.closureStartDate || '',
-      closureEndDate: room.closureEndDate || '',
-      closureStartTime: room.closureStartTime !== undefined ? room.closureStartTime : 7,
-      closureEndTime: room.closureEndTime !== undefined ? room.closureEndTime : 24
+      closureEndDate: room.closureStartDate || room.closureEndDate || '',
+      closureStartTime,
+      closureEndTime
     });
     setAmenitiesString(room.amenities.join(', '));
     setIsRoomModalOpen(true);
@@ -417,21 +580,42 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const amenities = amenitiesString.split(',').map(s => s.trim()).filter(s => s !== '');
     
     const { id: _, ...restRoomForm } = roomForm;
+    const closureDate = (roomForm.closureStartDate || '').trim();
+    const closureStartTime = roomForm.closureStartTime !== undefined ? Number(roomForm.closureStartTime) : BOOKING_START_HOUR;
+    const closureEndTime = roomForm.closureEndTime !== undefined ? Number(roomForm.closureEndTime) : 12;
+
+    if (roomForm.isClosed) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(closureDate)) {
+        showNotification(t.closureDateRequired, 'error');
+        return;
+      }
+
+      if (
+        !Number.isInteger(closureStartTime) ||
+        !Number.isInteger(closureEndTime) ||
+        closureStartTime < BOOKING_START_HOUR ||
+        closureEndTime > BOOKING_END_HOUR ||
+        closureEndTime <= closureStartTime
+      ) {
+        showNotification(t.closureTimeInvalid, 'error');
+        return;
+      }
+    }
 
     const closureData = roomForm.isClosed ? {
       isClosed: true,
       closureReason: roomForm.closureReason || '',
-      closureStartDate: roomForm.closureStartDate || '',
-      closureEndDate: roomForm.closureEndDate || '',
-      closureStartTime: roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : 7,
-      closureEndTime: roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 24
+      closureStartDate: closureDate,
+      closureEndDate: closureDate,
+      closureStartTime,
+      closureEndTime
     } : {
       isClosed: false,
       closureReason: '',
       closureStartDate: '',
       closureEndDate: '',
-      closureStartTime: 7,
-      closureEndTime: 24
+      closureStartTime: BOOKING_START_HOUR,
+      closureEndTime: BOOKING_END_HOUR
     };
 
     try {
@@ -444,7 +628,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           imageUrl: finalImageUrl, 
           amenities 
         } as Room);
-        showNotification(language === 'th' ? "บันทึกและแก้ไขข้อมูลห้องประชุมสำเร็จ!" : "Room updated successfully!", 'success');
+        showNotification(t.roomUpdatedSuccess, 'success');
       } else {
         const randomId = Math.random().toString(36).substr(2, 9);
         await onAddRoom({
@@ -454,7 +638,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           imageUrl: finalImageUrl,
           amenities
         } as Room);
-        showNotification(language === 'th' ? "เพิ่มห้องประชุมสำเร็จ!" : "Room created successfully!", 'success');
+        showNotification(t.roomCreatedSuccess, 'success');
       }
       setIsRoomModalOpen(false);
     } catch (err: any) {
@@ -468,21 +652,52 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         }
       } catch (ex) {}
 
-      showNotification(language === 'th'
-        ? `เกิดข้อผิดพลาดในการบันทึกห้องประชุม: ${errorDesc || 'ไม่มีสิทธิ์ในการบันทึกหรือขนาดไฟล์รูปภาพใหญ่เกินไป'}`
-        : `Failed to save room: ${errorDesc || 'Permission Denied or image file too large'}`, 'error');
+      showNotification(t.roomSaveFailed.replace('{reason}', errorDesc || t.roomSaveFallbackReason), 'error');
     }
   };
 
-  const analyticsBookingsForDate = useMemo(() => {
-    return bookings.filter(b => {
-      const year = b.startTime.getFullYear();
-      const month = String(b.startTime.getMonth() + 1).padStart(2, '0');
-      const day = String(b.startTime.getDate()).padStart(2, '0');
-      const dateStr = `${year}-${month}-${day}`;
-      return dateStr === analyticsDateStr;
-    });
-  }, [bookings, analyticsDateStr]);
+  const getDateInputValue = (date: Date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const formatDateInputDisplay = (value?: string) => {
+    if (!value) return '';
+    const [year, month, day] = value.split('-');
+    if (!year || !month || !day) return value;
+    return `${month}/${day}/${year}`;
+  };
+
+  const isSameDay = (date: Date, compareDate: Date) => (
+    date.getDate() === compareDate.getDate() &&
+    date.getMonth() === compareDate.getMonth() &&
+    date.getFullYear() === compareDate.getFullYear()
+  );
+
+  const bookingMatchesSearch = (b: Booking) => {
+    const normalizedSearchTerm = searchTerm.toLowerCase();
+    const departmentDisplayName = formatDepartment(b.department).toLowerCase();
+
+    return (
+      b.title.toLowerCase().includes(normalizedSearchTerm) ||
+      b.organizer.toLowerCase().includes(normalizedSearchTerm) ||
+      (b.department && b.department.toLowerCase().includes(normalizedSearchTerm)) ||
+      departmentDisplayName.includes(normalizedSearchTerm) ||
+      (b.employeeId && b.employeeId.toLowerCase().includes(normalizedSearchTerm)) ||
+      getRoomName(b.roomId).toLowerCase().includes(normalizedSearchTerm)
+    );
+  };
+
+  const todayBookings = useMemo(() => {
+    const today = new Date();
+    return bookings
+      .filter(b => isSameDay(b.startTime, today))
+      .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+  }, [bookings]);
+
+  const analyticsBookingsForDate = useMemo(() => bookings, [bookings]);
 
   const analyticsData = useMemo(() => {
     const totalBookings = analyticsBookingsForDate.length;
@@ -492,13 +707,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       const roomBookings = analyticsBookingsForDate.filter(b => b.roomId === room.id);
       let hoursBooked = 0;
       roomBookings.forEach(b => {
-        const overlapStart = Math.max(b.startTime.getTime(), new Date(analyticsDateStr).setHours(0, 0, 0, 0));
-        const overlapEnd = Math.min(b.endTime.getTime(), new Date(analyticsDateStr).setHours(23, 59, 59, 999));
-        const diffMs = Math.max(0, overlapEnd - overlapStart);
+        const diffMs = Math.max(0, b.endTime.getTime() - b.startTime.getTime());
         hoursBooked += diffMs / (1000 * 60 * 60);
       });
       
-      const occupancyRate = Math.min(Math.round((hoursBooked / 10) * 100), 100); // Out of a standard 10-hour workday
+      const occupancyRate = totalBookings > 0 ? Math.round((roomBookings.length / totalBookings) * 100) : 0;
       
       return {
         room,
@@ -509,7 +722,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     });
 
     const busiestRoomObj = [...roomStats].sort((a, b) => b.hoursBooked - a.hoursBooked)[0];
-    const busiestRoom = busiestRoomObj && busiestRoomObj.hoursBooked > 0 ? busiestRoomObj.room.name : (language === 'th' ? 'ยังไม่มีการประชุม' : 'No bookings');
+    const busiestRoom = busiestRoomObj && busiestRoomObj.hoursBooked > 0 ? busiestRoomObj.room.name : t.noBookings;
 
     // Department breakdown
     const departmentCounts: Record<string, number> = {};
@@ -554,28 +767,188 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       peakCount,
       roomStats
     };
-  }, [analyticsBookingsForDate, rooms, analyticsDateStr, language]);
+  }, [analyticsBookingsForDate, rooms, language]);
 
-  const navigateAnalyticsDate = (days: number) => {
-    const newDate = new Date(analyticsDateStr);
-    newDate.setDate(newDate.getDate() + days);
-    
-    const year = newDate.getFullYear();
-    const month = String(newDate.getMonth() + 1).padStart(2, '0');
-    const day = String(newDate.getDate()).padStart(2, '0');
-    setAnalyticsDateStr(`${year}-${month}-${day}`);
+  const filteredBookings = todayBookings
+    .filter(bookingMatchesSearch)
+    .sort((a, b) => a.startTime.getTime() - b.startTime.getTime());
+
+  const weekStartsOnSunday = (date: Date) => {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    start.setDate(start.getDate() - start.getDay());
+    return start;
   };
 
-  const filteredBookings = bookings.filter(b => 
-    b.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    b.organizer.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (b.department && b.department.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (b.employeeId && b.employeeId.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    getRoomName(b.roomId).toLowerCase().includes(searchTerm.toLowerCase())
-  ).sort((a, b) => b.startTime.getTime() - a.startTime.getTime());
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    const currentYear = new Date().getFullYear();
+    years.add(currentYear);
+    years.add(currentYear - 1);
+    
+    bookings.forEach(b => {
+      if (b.startTime) {
+        years.add(new Date(b.startTime).getFullYear());
+      }
+    });
+    return Array.from(years).sort((a, b) => b - a);
+  }, [bookings]);
 
+  const bookingMatchesHistoryDateFilter = (booking: Booking) => {
+    const bookingDate = booking.startTime;
+    if (!bookingDate) return false;
+
+    // 1. Specific Day Filter (if selected)
+    if (historyFilterDay) {
+      const selectedDayDate = new Date(`${historyFilterDay}T00:00:00`);
+      if (!Number.isNaN(selectedDayDate.getTime())) {
+        if (!isSameDay(bookingDate, selectedDayDate)) return false;
+      }
+    }
+
+    // 3. Year Filter (if selected)
+    if (historyFilterYear !== 'all') {
+      const selectedYear = parseInt(historyFilterYear, 10);
+      if (bookingDate.getFullYear() !== selectedYear) return false;
+    }
+
+    // 4. Month Filter (if selected)
+    if (historyFilterMonth !== 'all') {
+      const selectedMonth = parseInt(historyFilterMonth, 10);
+      if ((bookingDate.getMonth() + 1) !== selectedMonth) return false;
+    }
+
+    return true;
+  };
+
+  const getBookingHistorySortBucket = (booking: Booking) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const bookingDay = new Date(booking.startTime);
+    bookingDay.setHours(0, 0, 0, 0);
+    if (bookingDay.getTime() === today.getTime()) return 0;
+    if (bookingDay.getTime() > today.getTime()) return 1;
+    return 2;
+  };
+
+  const bookingHistory = bookings
+    .filter(bookingMatchesSearch)
+    .filter(bookingMatchesHistoryDateFilter)
+    .sort((a, b) => {
+      const bucketDiff = getBookingHistorySortBucket(a) - getBookingHistorySortBucket(b);
+      if (bucketDiff !== 0) return bucketDiff;
+      const bucket = getBookingHistorySortBucket(a);
+      return bucket === 2 ? b.startTime.getTime() - a.startTime.getTime() : a.startTime.getTime() - b.startTime.getTime();
+    });
+
+  const formatCsvDateTime = (date?: Date) => {
+    if (!date) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
+  };
+
+  const escapeCsvValue = (value: string | number | null | undefined) => {
+    const stringValue = value === null || value === undefined ? '' : String(value);
+    return `"${stringValue.replace(/"/g, '""')}"`;
+  };
+
+  const handleExportBookingHistoryCsv = () => {
+    const headers = [
+      'Booking ID',
+      'Room',
+      'Title',
+      'Organizer',
+      'Employee ID',
+      'Department',
+      'Email',
+      'Start Time',
+      'End Time',
+      'Status',
+      'Desk Number',
+      'Actual Start',
+      'Actual End'
+    ];
+
+    const rows = bookingHistory.map(booking => [
+      booking.id,
+      getRoomName(booking.roomId),
+      translateText(booking.title, language),
+      booking.organizer,
+      booking.employeeId,
+      formatDepartment(booking.department),
+      booking.email || '',
+      formatCsvDateTime(booking.startTime),
+      formatCsvDateTime(booking.endTime),
+      getAdminBookingStatusLabel(booking),
+      booking.deskNumber || '',
+      formatCsvDateTime(booking.actualStartTime),
+      formatCsvDateTime(booking.actualEndTime)
+    ]);
+
+    const csvContent = '\uFEFF' + [headers, ...rows]
+      .map(row => row.map(escapeCsvValue).join(','))
+      .join('\r\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `booking_history_${getDateInputValue(new Date())}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
   const pendingCount = bookings.filter(b => b.status === BookingStatus.PENDING).length;
 
+
+  const getAdminBookingDisplayState = (booking: Booking): AdminBookingDisplayState => {
+    if (booking.status === BookingStatus.PENDING) return 'pending';
+    if (booking.status === BookingStatus.REJECTED || !booking.status) return 'rejected';
+    if (booking.actualEndTime) return 'used';
+
+    const now = new Date().getTime();
+    const startTime = booking.startTime.getTime();
+    const endTime = booking.endTime.getTime();
+    const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
+
+    if (hasVerifiedOrStarted) {
+      if (now > endTime) return 'used';
+      if (now >= startTime && now <= endTime) return 'roomInUse';
+      return 'verified';
+    }
+
+    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
+    return 'confirmed';
+  };
+
+  const getAdminBookingStatusLabel = (booking: Booking) => {
+    const state = getAdminBookingDisplayState(booking);
+    if (state === 'pending') return t.pendingApproval;
+    if (state === 'waitForVerify') return t.waitForVerify;
+    if (state === 'verified') return t.verified;
+    if (state === 'roomInUse') return t.roomInUseStatus;
+    if (state === 'used') return t.usedRoomStatus;
+    if (state === 'rejected') return t.rejected;
+    return t.confirmed;
+  };
+
+  const getAdminBookingStatusClass = (state: AdminBookingDisplayState, department?: string) => {
+    if (state === 'pending') return 'bg-orange-100 text-orange-700';
+    if (state === 'rejected') return 'bg-red-100 text-red-700';
+
+    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
+    if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'} animate-pulse`;
+    if (departmentBadgeClass) return departmentBadgeClass;
+    if (state === 'waitForVerify') return 'bg-violet-100 text-violet-700';
+    if (state === 'verified') return 'bg-blue-100 text-blue-700';
+    if (state === 'used') return 'bg-slate-100 text-slate-600';
+    return 'bg-green-100 text-green-700';
+  };
   const getRoomTypeLabel = (type: string) => {
     if (type === 'Meeting') return t.meetingRoom;
     if (type === 'Reception') return t.receptionArea;
@@ -583,10 +956,118 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return type;
   };
 
-  if (!currentUser) {
+  const parseHistoryDate = (value: any): Date => {
+    if (!value) return new Date(0);
+    if (value instanceof Date) return value;
+    if (typeof value.toDate === 'function') return value.toDate();
+    if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? new Date(0) : parsed;
+  };
+
+  const formatEmailSentAt = (value: Date): string => {
+    if (!value || value.getTime() === 0 || Number.isNaN(value.getTime())) return '-';
+    const locale = language === 'th' ? 'th-TH' : 'en-US';
+    const time = value.toLocaleTimeString(locale, {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: language === 'en',
+    });
+    return `${formatDate(value, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} ${time}`;
+  };
+
+  const normalizeEmailHistoryRecord = (raw: any): EmailSentHistoryRecord => ({
+    id: String(raw?.id || Math.random().toString(36).slice(2)),
+    recipientEmail: String(raw?.recipientEmail || ''),
+    recipientName: String(raw?.recipientName || ''),
+    subject: String(raw?.subject || ''),
+    purpose: String(raw?.purpose || ''),
+    sentAt: parseHistoryDate(raw?.sentAt || raw?.createdAt),
+    status: raw?.status === 'failed' ? 'failed' : 'successful',
+    relatedBookingId: String(raw?.relatedBookingId || ''),
+    relatedBookingTitle: String(raw?.relatedBookingTitle || ''),
+    relatedRoomId: String(raw?.relatedRoomId || ''),
+    relatedRoomName: String(raw?.relatedRoomName || ''),
+    errorCode: String(raw?.errorCode || ''),
+    errorMessage: String(raw?.errorMessage || ''),
+    createdAt: raw?.createdAt,
+  });
+
+  const loadEmailHistory = async () => {
+    if (!currentUser) return;
+
+    setIsEmailHistoryLoading(true);
+    setEmailHistoryError('');
+    try {
+      const listHistory = httpsCallable(functions, 'listEmailSentHistory');
+      const response = await listHistory({
+        limit: 200,
+        admin: {
+          id: currentUser.id,
+          firestoreDocId: currentUser.id,
+          username: currentUser.username,
+          password: currentUser.password || '',
+          role: currentUser.role,
+        },
+      });
+      const data = response.data as { history?: unknown[] };
+      const records = Array.isArray(data.history)
+        ? data.history.map(normalizeEmailHistoryRecord)
+        : [];
+      records.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+      setEmailHistory(records);
+    } catch (error) {
+      console.error('Failed to load email sent history', error);
+      setEmailHistoryError(t.emailHistoryLoadFailed);
+    } finally {
+      setIsEmailHistoryLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && activeTab === 'emails') {
+      void loadEmailHistory();
+    }
+  }, [activeTab, currentUser?.id, currentUser?.username, language]);
+
+  const renderLanguageSwitcher = (className = '') => {
+    const updateLanguage = setLanguage;
+    if (!updateLanguage) return null;
+
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-200px)] animate-in fade-in zoom-in duration-300">
-        <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm">
+      <div className={`flex bg-slate-100 p-1 rounded-lg border border-slate-200 shadow-sm ${className}`}>
+        <button
+          type="button"
+          onClick={() => updateLanguage('en')}
+          aria-pressed={language === 'en'}
+          className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'en' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+        >
+          English
+        </button>
+        <button
+          type="button"
+          onClick={() => updateLanguage('th')}
+          aria-pressed={language === 'th'}
+          className={`flex-1 py-1.5 text-xs font-semibold rounded-md transition-all ${language === 'th' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-400 hover:text-slate-600'}`}
+        >
+          ภาษาไทย
+        </button>
+      </div>
+    );
+  };
+
+  const loginCard = (
+        <div className="relative bg-white p-8 rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm">
+          {loginPresentation === 'modal' && onCancelLogin && (
+            <button
+              type="button"
+              onClick={onCancelLogin}
+              className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+              aria-label={t.close}
+            >
+              <X className="h-5 w-5" />
+            </button>
+          )}
           <div className="text-center mb-6">
             <div className="bg-brand-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
               <Lock className="w-8 h-8 text-brand-500" />
@@ -621,7 +1102,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 />
               </div>
             </div>
-            {loginError && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg font-medium">{loginError}</p>}
+            {loginErrorMessage && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg font-medium">{loginErrorMessage}</p>}
             <button
               type="submit"
               className="w-full bg-brand-500 text-white py-2.5 rounded-xl font-bold hover:bg-brand-600 transition-colors shadow-sm hover:shadow flex items-center justify-center"
@@ -630,50 +1111,62 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               {t.signIn}
             </button>
 
-            <div className="relative my-4 flex py-1 items-center">
-              <div className="flex-grow border-t border-slate-200"></div>
-              <span className="flex-shrink mx-3 text-slate-400 text-xs font-semibold uppercase tracking-wider">
-                {language === 'th' ? 'หรือเชื่อมต่อด้วย' : 'or continue with'}
-              </span>
-              <div className="flex-grow border-t border-slate-200"></div>
-            </div>
 
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              className="w-full bg-white border border-slate-200 hover:border-slate-300 text-slate-700 py-2.5 rounded-xl font-bold transition-all shadow-sm flex items-center justify-center"
-            >
-              <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22c-.22-.67-.35-1.37-.35-2.09z" fill="#FBBC05"/>
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" fill="#EA4335"/>
-              </svg>
-              <span>{language === 'th' ? 'เข้าสู่ระบบด้วย Google' : 'Sign In with Google'}</span>
-            </button>
+            {loginPresentation === 'modal' && onCancelLogin && (
+              <button
+                type="button"
+                onClick={onCancelLogin}
+                className="w-full border border-slate-200 text-slate-600 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+              >
+                {t.cancel}
+              </button>
+            )}
           </form>
         </div>
+  );
+
+  if (!currentUser) {
+    if (loginPresentation === 'modal') {
+      return loginCard;
+    }
+
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-200px)] animate-in fade-in zoom-in duration-300">
+        {loginCard}
       </div>
     );
   }
 
   return (
     <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-      <header className="flex flex-col md:flex-row md:items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">{t.welcomeBack}</h1>
-          <p className="text-slate-500 font-medium">Username: <span className="font-semibold text-brand-500">{currentUser.username}</span>.</p>
+      <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="w-full sm:w-56">
+          {renderLanguageSwitcher()}
         </div>
-        <div className="mt-4 md:mt-0 flex items-center space-x-3">
-            <div className={`flex items-center px-3 py-1.5 rounded-full text-sm font-semibold ${currentUser.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700' : 'bg-teal-100 text-teal-700'}`}>
+        <div className="flex flex-wrap items-center justify-start sm:justify-end gap-3">
+            <div className="flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-white border border-slate-200 text-slate-700 shadow-sm">
+                <User className="w-4 h-4 mr-2 text-brand-500" />
+                {currentUser.username}
+            </div>
+            <div className={`flex items-center px-3 py-1.5 rounded-full text-sm font-semibold shadow-sm ${currentUser.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700 border border-brand-200' : 'bg-teal-100 text-teal-700 border border-teal-200'}`}>
                 {currentUser.role === 'SUPER_ADMIN' ? <ShieldCheck className="w-4 h-4 mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
                 {currentUser.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
             </div>
+            <button
+                type="button"
+                onClick={() => setIsAdminGuideOpen(true)}
+                className="inline-flex items-center text-sm text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors font-semibold border border-brand-100 shadow-sm"
+            >
+                <BookOpen className="w-4 h-4 mr-1.5" />
+                {language === 'th' ? 'คู่มือแอดมิน' : 'Admin Guide'}
+            </button>
             <button 
                 onClick={() => {
                     updateCurrentUser(null);
                     setLoginUsername('');
                     setLoginPassword('');
+                    setLoginErrorKey('');
+                    onBackToUser?.();
                 }}
                 className="text-sm text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors font-semibold"
             >
@@ -685,19 +1178,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Tabs */}
       <div className="flex space-x-1 bg-white p-1 rounded-xl border border-slate-200 w-fit overflow-x-auto">
         <button
-            onClick={() => setActiveTab('bookings')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'bookings' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-        >
-            {t.bookingsTab}
-
-        </button>
-
-        <button
             onClick={() => setActiveTab('analytics')}
             className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'analytics' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
         >
             <BarChart2 className="w-4 h-4 mr-2" />
             {t.insightsStats}
+        </button>
+
+        <button
+            onClick={() => setActiveTab('emails')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'emails' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+            <Mail className="w-4 h-4 mr-2" />
+            {t.emailHistoryTab}
         </button>
         
         {/* Room management is accessible to all admins */}
@@ -724,13 +1217,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         <>
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <button
+                    type="button"
+                    onClick={() => setActiveTab('analytics')}
+                    className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 text-left transition-all hover:border-brand-300 hover:shadow-md active:scale-[0.99]"
+                >
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-slate-500 text-sm font-medium">{t.totalBookingsHeader}</span>
                     <Calendar className="w-5 h-5 text-indigo-500 opacity-75" />
                 </div>
                 <p className="text-3xl font-bold text-slate-800">{bookings.length}</p>
-                </div>
+                <p className="text-[11px] text-brand-600 font-bold mt-2">{language === 'th' ? 'คลิกเพื่อดูสถิติและประวัติทั้งหมด' : 'View analytics and history'}</p>
+                </button>
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
                 <div className="flex items-center justify-between mb-2">
                     <span className="text-slate-500 text-sm font-medium">{t.activeRooms}</span>
@@ -744,10 +1242,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <Calendar className="w-5 h-5 text-brand-500 opacity-75" />
                 </div>
                 <p className="text-3xl font-bold text-slate-800">
-                    {bookings.filter(b => {
-                        const now = new Date();
-                        return b.startTime.getDate() === now.getDate() && b.startTime > now && b.status === BookingStatus.CONFIRMED;
-                    }).length}
+                    {todayBookings.length}
                 </p>
                 </div>
             </div>
@@ -755,7 +1250,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             {/* Booking Management Table */}
             <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-                <h2 className="font-bold text-slate-800">{t.allBookings}</h2>
+                <h2 className="font-bold text-slate-800">{language === 'th' ? 'รายการจองวันนี้' : 'Today Bookings'}</h2>
                 <div className="relative w-full sm:w-64">
                     <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                     <input
@@ -788,8 +1283,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </td>
                         </tr>
                     ) : (
-                        filteredBookings.map((booking) => (
-                        <tr key={booking.id} className="hover:bg-slate-50 transition-colors">
+                        filteredBookings.map((booking) => {
+                            const displayState = getAdminBookingDisplayState(booking);
+                            return (
+                        <tr key={booking.id} className={`transition-colors ${getBookingDepartmentClassForState(displayState, booking.department)} hover:shadow-sm`}>
                             <td className="px-6 py-4">
                                 <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">
                                     {getRoomName(booking.roomId)}
@@ -815,13 +1312,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         {booking.employeeId || 'N/A'}
                                     </div>
                                     <div className="flex items-center text-xs text-slate-400">
-                                        <Building2 className="w-3 h-3 mr-1.5" />
-                                        {booking.department ? translateText(booking.department, language) : '-'}
+                                        <span className={`w-2 h-2 rounded-full mr-1.5 ${getBookingDepartmentDotClass(booking.department)}`}></span>
+                                        {formatDepartment(booking.department) || '-'}
                                     </div>
                                     {booking.deskNumber && (
                                         <div className="flex items-center text-xs text-slate-400">
                                             <span className="font-bold text-[10px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded mr-1.5 shrink-0">
-                                                {language === 'th' ? 'โต๊ะ' : 'Desk'}
+                                                {t.deskShort}
                                             </span>
                                             {booking.deskNumber}
                                         </div>
@@ -829,26 +1326,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </div>
                             </td>
                             <td className="px-6 py-4 mr-0">
-                                {booking.status === BookingStatus.PENDING && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-orange-100 text-orange-700">
-                                        {t.pendingApproval}
-                                    </span>
-                                )}
-                                {booking.status === BookingStatus.CONFIRMED && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                                        {t.confirmed}
-                                    </span>
-                                )}
-                                {booking.status === BookingStatus.VERIFIED && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-100 text-blue-700">
-                                        {language === 'th' ? 'ยืนยันแล้ว' : 'Verified'}
-                                    </span>
-                                )}
-                                {(booking.status === BookingStatus.REJECTED || !booking.status) && booking.status !== BookingStatus.PENDING && booking.status !== BookingStatus.CONFIRMED && booking.status !== BookingStatus.VERIFIED && (
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                                        {language === 'th' ? "ปฏิเสธ" : "Rejected"}
-                                    </span>
-                                )}
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState, booking.department)}`}>
+                                    {getAdminBookingStatusLabel(booking)}
+                                </span>
                             </td>
                             <td className="px-6 py-4 text-right">
                                 <div className="flex items-center justify-end space-x-2">
@@ -857,31 +1337,41 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <button
                                                 onClick={() => onApproveBooking(booking.id)}
                                                 className="text-white bg-green-500 hover:bg-green-600 p-1.5 rounded-lg transition-all shadow-sm"
-                                                title="Approve"
+                                                title={t.approve}
                                             >
                                                 <Check className="w-4 h-4" />
                                             </button>
                                             <button
                                                 onClick={() => onRejectBooking(booking.id)}
                                                 className="text-white bg-orange-500 hover:bg-orange-600 p-1.5 rounded-lg transition-all shadow-sm"
-                                                title="Reject"
+                                                title={t.reject}
                                             >
                                                 <XCircle className="w-4 h-4" />
                                             </button>
                                         </>
                                     )}
+                                    {onUpdateBooking && (
+                                        <button
+                                            onClick={() => setEditingBooking(booking)}
+                                            className="text-slate-400 hover:text-brand-600 hover:bg-brand-50 p-2 rounded-lg transition-all"
+                                            title={t.edit}
+                                        >
+                                            <Edit className="w-4 h-4" />
+                                        </button>
+                                    )}
                                     {/* All admins can delete bookings */}
                                     <button
                                         onClick={() => onDeleteBooking(booking.id)}
                                         className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                        title="Delete"
+                                        title={t.deleteButton}
                                     >
                                         <Trash2 className="w-4 h-4" />
                                     </button>
                                 </div>
                             </td>
                         </tr>
-                        ))
+                            );
+                        })
                     )}
                     </tbody>
                 </table>
@@ -892,30 +1382,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
       {activeTab === 'analytics' && (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
-           {/* Date Navigator Header for Analytics */}
-           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-              <div className="flex items-center space-x-2">
-                 <button 
-                    onClick={() => navigateAnalyticsDate(-1)}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600"
-                    title={language === 'th' ? "วันก่อนหน้า" : "Previous day"}
-                 >
-                    <ChevronLeft className="w-5 h-5" />
-                 </button>
-                 <div className="text-sm font-bold text-slate-800">
-                    {formatDate(new Date(analyticsDateStr), language, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
-                 </div>
-                 <button 
-                    onClick={() => navigateAnalyticsDate(1)}
-                    className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-slate-600"
-                    title={language === 'th' ? "วันถัดไป" : "Next day"}
-                 >
-                    <ChevronRight className="w-5 h-5" />
-                 </button>
-              </div>
-              
-              <div className="text-xs text-slate-500 font-bold">
-                 {t.insightsStats} - {language === 'th' ? "โหมดผู้ดูแลระบบ" : "Admin Mode"}
+           {/* Total Bookings Header */}
+           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+              <div>
+                 <h2 className="font-bold text-slate-900 flex items-center">
+                    <BarChart2 className="w-5 h-5 mr-2 text-brand-500" />
+                    {t.totalBookingsHeader}
+                 </h2>
+                 <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'th' ? 'สถิติการจองทั้งหมดและประวัติย้อนหลัง' : 'Overall booking analytics and historical booking data'}</p>
               </div>
            </div>
 
@@ -928,7 +1402,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalBookingsHeader}</div>
                     <div className="text-2xl font-bold text-slate-800">{analyticsData.totalBookings}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{t.todayScheduled}</div>
+                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{language === 'th' ? 'รายการทั้งหมดในระบบ' : 'all records in the system'}</div>
                  </div>
               </div>
 
@@ -950,7 +1424,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.peakActiveTime}</div>
                     <div className="text-2xl font-bold text-slate-800">
-                       {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : (language === 'th' ? 'ไม่มี' : 'None')}
+                       {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : t.none}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.peakCount > 0 ? `${analyticsData.peakCount} ${t.overlappingBookings}` : t.noOverlappingBookings}</div>
                  </div>
@@ -963,7 +1437,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  <div>
                     <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
                     <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
-                       {analyticsData.departmentData[0] ? analyticsData.departmentData[0].name : (language === 'th' ? 'ไม่มี' : 'None')}
+                       {analyticsData.departmentData[0] ? formatDepartment(analyticsData.departmentData[0].name) : t.none}
                     </div>
                     <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
                  </div>
@@ -985,7 +1459,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                        <div key={item.room.id} className="space-y-1.5">
                           <div className="flex justify-between items-center text-xs font-bold text-slate-705">
                              <span>{item.room.name} ({getRoomTypeLabel(item.room.type)})</span>
-                             <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {language === 'th' ? "ชม." : "hrs"})</span>
+                             <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {t.hoursShort})</span>
                           </div>
                           <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
                              <div 
@@ -1022,9 +1496,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 <div className="flex justify-between items-center text-xs font-bold text-slate-707">
                                    <span className="flex items-center">
                                       <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
-                                      {translateText(dept.name, language)}
+                                      {formatDepartment(dept.name)}
                                    </span>
-                                   <span className="font-bold text-slate-800">{dept.count} {language === 'th' ? "ครั้ง" : "Bookings"} ({dept.pct}%)</span>
+                                   <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.pct}%)</span>
                                 </div>
                                 <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                                    <div 
@@ -1047,6 +1521,324 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                  </div>
               </div>
            </div>
+
+<div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
+              <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
+                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                    <div>
+                       <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{language === 'th' ? 'ประวัติการจอง' : 'Booking History'}</h4>
+                       <p className="text-xs text-slate-400 mt-1 font-semibold">{language === 'th' ? 'วันนี้ก่อน ตามด้วยอนาคต และย้อนหลังจากใหม่ไปเก่า' : 'Today first, then future bookings, then past bookings newest to oldest'}</p>
+                    </div>
+                    <div className="relative w-full sm:w-72">
+                       <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                       <input
+                          type="text"
+                          placeholder={t.searchPlaceholder}
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
+                       />
+                    </div>
+                 </div>
+                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end mt-2">
+                    <div className="sm:col-span-2">
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ปี' : 'Year'}</label>
+                       <select
+                          value={historyFilterYear}
+                          onChange={(e) => {
+                             const yr = e.target.value;
+                             setHistoryFilterYear(yr);
+                             if (yr === 'all') setHistoryFilterMonth('all');
+                          }}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                       >
+                          <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Years'}</option>
+                          {availableYears.map(yr => (
+                             <option key={yr} value={yr}>{yr}</option>
+                          ))}
+                       </select>
+                    </div>
+
+                    <div className="sm:col-span-2">
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เดือน' : 'Month'}</label>
+                       <select
+                          value={historyFilterMonth}
+                          onChange={(e) => setHistoryFilterMonth(e.target.value)}
+                          disabled={historyFilterYear === 'all'}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-50 disabled:text-slate-400 shadow-sm"
+                       >
+                          <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Months'}</option>
+                          {(language === 'th' ? MONTHS_TH : MONTHS_EN).map((m, idx) => (
+                             <option key={idx} value={idx + 1}>{m}</option>
+                          ))}
+                       </select>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เจาะจงวันที่' : 'Specific Day'}</label>
+                       <div className="relative">
+                          <input
+                             type="date"
+                             lang="en-US"
+                             value={historyFilterDay}
+                             onChange={(e) => setHistoryFilterDay(e.target.value)}
+                             className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                          />
+                          {historyFilterDay ? (
+                             <button
+                                type="button"
+                                onClick={() => setHistoryFilterDay('')}
+                                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 transition-colors"
+                             >
+                                <X className="w-4 h-4" />
+                             </button>
+                          ) : (
+                             <span className="absolute right-2.5 top-2.5 text-xs text-slate-300 font-bold select-none pointer-events-none">{language === 'th' ? 'ทั้งหมด' : 'All'}</span>
+                          )}
+                       </div>
+                    </div>
+
+                    <div className="hidden sm:block sm:col-span-3"></div>
+
+                    <div className="sm:col-span-2">
+                       <button
+                          type="button"
+                          onClick={handleExportBookingHistoryCsv}
+                          className="inline-flex w-full items-center justify-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all active:scale-[0.98]"
+                       >
+                          <Download className="w-4 h-4 mr-2" />
+                          {language === 'th' ? 'ส่งออก CSV' : 'Export CSV'}
+                       </button>
+                    </div>
+
+                    <div className="sm:col-span-12 text-xs font-bold text-slate-500 pt-1">
+                       {(() => {
+                          const segments: string[] = [];
+
+                          if (historyFilterDay) {
+                             segments.push(language === 'th' 
+                                ? `เฉพาะวันที่: ${formatDateInputDisplay(historyFilterDay)}` 
+                                : `Specific Date: ${formatDateInputDisplay(historyFilterDay)}`);
+                          }
+
+                          if (historyFilterYear !== 'all') {
+                             const monthIndex = historyFilterMonth === 'all' ? -1 : parseInt(historyFilterMonth, 10) - 1;
+                             const monthLabel = monthIndex === -1
+                                ? (language === 'th' ? 'ทุกเดือน' : 'All Months')
+                                : (language === 'th' ? MONTHS_TH[monthIndex] : MONTHS_EN[monthIndex]);
+                             segments.push(language === 'th'
+                                ? `ช่วงเวลา: ${monthLabel} ปี ${historyFilterYear}`
+                                : `Period: ${monthLabel} ${historyFilterYear}`);
+                          } else {
+                             if (!historyFilterDay) {
+                                segments.push(language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates');
+                             }
+                          }
+
+                          return segments.join(' | ');
+                       })()}
+                    </div>
+                 </div>
+              </div>
+              <div className="overflow-x-auto max-h-[520px]">
+                 <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
+                    <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[11px] font-bold uppercase tracking-wider text-slate-500 backdrop-blur">
+                       <tr>
+                          <th className="w-[150px] px-5 py-3">{t.room}</th>
+                          <th className="px-5 py-3">{t.eventCol}</th>
+                          <th className="w-[170px] px-5 py-3">{t.dateTimeCol}</th>
+                          <th className="w-[170px] px-5 py-3">{t.organizerName}</th>
+                          <th className="w-[135px] px-5 py-3">{t.employeeId}</th>
+                          <th className="w-[110px] px-5 py-3">{t.department}</th>
+                          <th className="w-[100px] px-5 py-3">{t.deskShort}</th>
+                          <th className="w-[150px] px-5 py-3">{t.status}</th>
+                          <th className="w-[96px] px-5 py-3 text-right">{t.actionsCol}</th>
+                       </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 bg-white font-medium">
+                       {bookingHistory.length === 0 ? (
+                          <tr>
+                             <td colSpan={9} className="px-6 py-10 text-center text-sm font-semibold text-slate-400">{t.noBookingsTable}</td>
+                          </tr>
+                       ) : bookingHistory.map(booking => {
+                          const displayState = getAdminBookingDisplayState(booking);
+                          const departmentDisplayName = formatDepartment(booking.department);
+                          return (
+                             <tr key={booking.id} className={`group transition-colors ${getBookingDepartmentClassForState(displayState, booking.department)} hover:shadow-sm`}>
+                                <td className="px-5 py-4 align-top">
+                                   <span className="inline-flex max-w-full items-center truncate rounded-md border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700" title={getRoomName(booking.roomId)}>{getRoomName(booking.roomId)}</span>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <div className="truncate font-bold text-slate-800" title={translateText(booking.title, language)}>{translateText(booking.title, language)}</div>
+                                   <div className="mt-1 truncate font-mono text-[11px] text-slate-400" title={booking.id}>{booking.id}</div>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <div className="font-bold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                                   <div className="mt-1 font-mono text-xs font-semibold text-slate-500">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
+                                </td>
+                                <td className="px-5 py-4 align-top text-slate-600">
+                                   <div className="truncate font-bold text-slate-800" title={booking.organizer || '-'}>{booking.organizer || '-'}</div>
+                                   {booking.email && <div className="mt-1 truncate text-xs font-semibold text-slate-400" title={booking.email}>{booking.email}</div>}
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <span className="font-mono text-xs font-bold text-slate-600">{booking.employeeId || '-'}</span>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <span className={`inline-flex min-w-10 items-center justify-center rounded-md border px-2 py-1 font-mono text-xs font-bold uppercase ${getBookingDepartmentBadgeClass(booking.department)}`}>{departmentDisplayName || '-'}</span>
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   {booking.deskNumber ? (
+                                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-bold text-slate-600">{booking.deskNumber}</span>
+                                   ) : (
+                                      <span className="text-sm font-semibold text-slate-300">-</span>
+                                   )}
+                                </td>
+                                <td className="px-5 py-4 align-top">
+                                   <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${getAdminBookingStatusClass(displayState, booking.department)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                                </td>
+                                <td className="px-5 py-4 text-right align-top">
+                                   <div className="flex items-center justify-end space-x-1.5">
+                                      {onUpdateBooking && (
+                                         <button
+                                            onClick={() => setEditingBooking(booking)}
+                                            className="rounded-lg p-2 text-slate-400 transition-all hover:bg-brand-50 hover:text-brand-600"
+                                            title={t.edit}
+                                         >
+                                            <Edit className="w-4 h-4" />
+                                         </button>
+                                      )}
+                                      <button
+                                         onClick={() => onDeleteBooking(booking.id)}
+                                         className="rounded-lg p-2 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600"
+                                         title={t.deleteButton}
+                                      >
+                                         <Trash2 className="w-4 h-4" />
+                                      </button>
+                                   </div>
+                                </td>
+                             </tr>
+                          );
+                       })}
+                    </tbody>
+                 </table>
+              </div>
+           </div>
+        </div>
+      )}
+
+      {activeTab === 'emails' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800 animate-in fade-in zoom-in-95 duration-200">
+          <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="font-bold text-slate-800 flex items-center">
+                <Mail className="w-4 h-4 mr-2 text-brand-500" />
+                {t.emailHistoryTitle}
+              </h2>
+              <p className="text-xs text-slate-500 font-medium mt-1">{t.emailHistorySub}</p>
+            </div>
+            <button
+              type="button"
+              onClick={loadEmailHistory}
+              disabled={isEmailHistoryLoading}
+              className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-wait"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${isEmailHistoryLoading ? 'animate-spin' : ''}`} />
+              {t.refreshEmailHistory}
+            </button>
+          </div>
+
+          {emailHistoryError && (
+            <div className="m-4 p-3 bg-rose-50 border border-rose-100 rounded-lg text-sm font-semibold text-rose-700 flex items-center">
+              <AlertCircle className="w-4 h-4 mr-2 flex-shrink-0" />
+              {emailHistoryError}
+            </div>
+          )}
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">{t.recipientCol}</th>
+                  <th className="px-6 py-3">{t.subjectPurposeCol}</th>
+                  <th className="px-6 py-3">{t.relatedCol}</th>
+                  <th className="px-6 py-3">{t.sentAtCol}</th>
+                  <th className="px-6 py-3">{t.sentStatusCol}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {isEmailHistoryLoading && emailHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                      {t.loadingEmailHistory}...
+                    </td>
+                  </tr>
+                ) : emailHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">
+                      {t.noEmailHistory}
+                    </td>
+                  </tr>
+                ) : (
+                  emailHistory.map((record) => {
+                    const relatedBooking = record.relatedBookingTitle || record.relatedBookingId;
+                    const relatedRoom = record.relatedRoomName || (record.relatedRoomId ? getRoomName(record.relatedRoomId) : '');
+                    const purpose = record.purpose === 'Booking Verification'
+                      ? t.bookingVerificationPurpose
+                      : translateText(record.purpose, language);
+                    return (
+                      <tr key={record.id} className="hover:bg-slate-50 transition-colors align-top">
+                        <td className="px-6 py-4">
+                          <div className="font-semibold text-slate-900">{record.recipientName || '-'}</div>
+                          <div className="text-xs text-slate-500 font-mono mt-0.5">{record.recipientEmail || '-'}</div>
+                        </td>
+                        <td className="px-6 py-4 max-w-sm">
+                          <div className="font-semibold text-slate-800 truncate" title={record.subject}>
+                            {record.subject || '-'}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-0.5">{purpose || '-'}</div>
+                          {record.status === 'failed' && (record.errorMessage || record.errorCode) && (
+                            <div className="mt-2 text-[11px] font-semibold text-rose-600 bg-rose-50 border border-rose-100 rounded-md px-2 py-1">
+                              {t.errorLabel}: {record.errorCode ? `${record.errorCode} - ` : ''}{record.errorMessage}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-6 py-4">
+                          {relatedBooking || relatedRoom ? (
+                            <div className="space-y-1">
+                              {relatedBooking && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="font-bold text-slate-500">{t.bookingLabel}:</span> {translateText(relatedBooking, language)}
+                                </div>
+                              )}
+                              {relatedRoom && (
+                                <div className="text-xs text-slate-600">
+                                  <span className="font-bold text-slate-500">{t.roomLabel}:</span> {relatedRoom}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-xs italic text-slate-400">{t.noRelatedItem}</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-slate-600 font-semibold">
+                          {formatEmailSentAt(record.sentAt)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            record.status === 'successful'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-rose-100 text-rose-700'
+                          }`}>
+                            {record.status === 'successful' ? t.emailStatusSuccessful : t.emailStatusFailed}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -1067,6 +1859,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <table className="w-full text-sm text-left">
                         <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
                             <tr>
+                                <th className="px-6 py-3">{t.image}</th>
                                 <th className="px-6 py-3">{t.name}</th>
                                 <th className="px-6 py-3">{t.type}</th>
                                 <th className="px-6 py-3">{t.capacity}</th>
@@ -1078,6 +1871,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         <tbody className="divide-y divide-slate-100 font-medium">
                             {sortedRooms.map(room => (
                                 <tr key={room.id} className="hover:bg-slate-50 transition-colors">
+                                    <td className="px-6 py-4">
+                                        <div className="h-12 w-20 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
+                                            {room.imageUrl ? (
+                                                <img src={room.imageUrl} alt={room.name} className="h-full w-full object-cover" />
+                                            ) : (
+                                                <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-600" />
+                                            )}
+                                        </div>
+                                    </td>
                                     <td className="px-6 py-4 font-semibold text-slate-900">{room.name}</td>
                                     <td className="px-6 py-4">
                                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
@@ -1101,7 +1903,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 )}
                                                 {(room.closureStartDate || room.closureStartTime !== undefined) && (
                                                     <span className="text-[9px] text-slate-500 font-semibold font-mono mt-0.5">
-                                                        {room.closureStartDate && `${room.closureStartDate}`}
+                                                        {room.closureStartDate && formatDateInputDisplay(room.closureStartDate)}
                                                         {room.closureStartTime !== undefined && ` [${String(room.closureStartTime).padStart(2, '0')}:00-${String(room.closureEndTime || 24).padStart(2, '0')}:00]`}
                                                     </span>
                                                 )}
@@ -1117,14 +1919,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <button
                                                 onClick={() => openEditRoomModal(room)}
                                                 className="text-slate-400 hover:text-brand-500 hover:bg-brand-50 p-2 rounded-lg transition-all"
-                                                title="Edit"
+                                                title={t.edit}
                                             >
                                                 <Edit className="w-4 h-4" />
                                             </button>
                                             <button
                                                 onClick={() => onDeleteRoom(room.id)}
                                                 className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                                title="Delete"
+                                                title={t.deleteButton}
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -1172,7 +1974,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <User className="w-4 h-4 text-slate-500" />
                                         </div>
                                         {user.username}
-                                        {user.id === currentUser.id && <span className="ml-2 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">(You)</span>}
+                                        {user.id === currentUser.id && <span className="ml-2 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">{t.currentUserBadge}</span>}
                                     </td>
                                     <td className="px-6 py-4">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${user.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700' : 'bg-teal-100 text-teal-700'}`}>
@@ -1187,7 +1989,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                             <button
                                                 onClick={() => handleDeleteUser(user.id)}
                                                 className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                                title="Delete"
+                                                title={t.deleteButton}
                                             >
                                                 <Trash2 className="w-4 h-4" />
                                             </button>
@@ -1201,20 +2003,32 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           </div>
       )}
 
+      <EditBookingModal
+        isOpen={!!editingBooking}
+        onClose={() => setEditingBooking(null)}
+        language={language}
+        rooms={rooms}
+        booking={editingBooking}
+        onSave={onUpdateBooking || (async () => false)}
+        t={t}
+        showNotification={showNotification}
+      />
+
       {/* Add/Edit Room Modal */}
       {isRoomModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                    <h3 className="text-lg font-bold text-slate-900">
-                        {editingRoom ? t.editRoom : t.addNewRoom}
-                    </h3>
-                    <button onClick={() => setIsRoomModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-                
-                <form onSubmit={handleRoomSubmit} className="p-6 space-y-4">
+            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] animate-in fade-in zoom-in duration-200 overflow-hidden">
+                <form onSubmit={handleRoomSubmit} className="flex max-h-[calc(100vh-2rem)] flex-col">
+                    <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-100">
+                        <h3 className="text-lg font-bold text-slate-900">
+                            {editingRoom ? t.editRoom : t.addNewRoom}
+                        </h3>
+                        <button type="button" onClick={() => setIsRoomModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                            <X className="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-4">
                     <div>
                         <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomName}</label>
                         <input 
@@ -1223,7 +2037,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             value={roomForm.name}
                             onChange={(e) => setRoomForm({...roomForm, name: e.target.value})}
                             className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                            placeholder="e.g. Conference Room A"
+                            placeholder={t.roomNamePlaceholder}
                         />
                     </div>
                     
@@ -1264,7 +2078,35 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         />
                     </div>
 
-
+                    <div>
+                        <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomImage}</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-3 items-stretch">
+                            <div className="relative h-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                                {roomForm.imageUrl ? (
+                                    <img
+                                        src={roomForm.imageUrl}
+                                        alt={String(roomForm.name || t.roomImage)}
+                                        className="h-full w-full object-cover"
+                                    />
+                                ) : (
+                                    <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-700" />
+                                )}
+                            </div>
+                            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center transition-colors hover:border-brand-300 hover:bg-brand-50">
+                                <Upload className="mb-2 h-5 w-5 text-brand-500" />
+                                <span className="text-sm font-bold text-slate-700">
+                                    {roomForm.imageUrl ? t.replaceRoomImage : t.clickToUpload}
+                                </span>
+                                <span className="mt-1 text-xs font-medium text-slate-500">{t.uploadRoomImageHelp}</span>
+                                <input
+                                    type="file"
+                                    accept="image/png,image/jpeg,image/webp"
+                                    onChange={handleImageUpload}
+                                    className="hidden"
+                                />
+                            </label>
+                        </div>
+                    </div>
 
                     <div className="border-t border-slate-100 pt-4 space-y-4">
                         <div className="flex items-center justify-between">
@@ -1279,7 +2121,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setRoomForm({...roomForm, isClosed: true})}
+                                    onClick={() => setRoomForm({
+                                        ...roomForm,
+                                        isClosed: true,
+                                        closureStartTime: roomForm.closureStartTime ?? BOOKING_START_HOUR,
+                                        closureEndTime: roomForm.closureEndTime &&
+                                            roomForm.closureEndTime > (roomForm.closureStartTime ?? BOOKING_START_HOUR) &&
+                                            roomForm.closureEndTime <= BOOKING_END_HOUR
+                                                ? roomForm.closureEndTime
+                                                : Math.min((roomForm.closureStartTime ?? BOOKING_START_HOUR) + 1, BOOKING_END_HOUR)
+                                    })}
                                     className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${roomForm.isClosed ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                                 >
                                     {t.statusClosed}
@@ -1303,14 +2154,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                           const val = e.target.value;
                                           if (val === 'Other') {
                                             // Set a dynamic placeholder reason for User to start editing
-                                            setRoomForm({ ...roomForm, closureReason: language === 'th' ? 'ปรับปรุงห้อง' : 'Custom Renovation' });
+                                            setRoomForm({ ...roomForm, closureReason: t.customRenovationReason });
                                           } else {
                                             setRoomForm({ ...roomForm, closureReason: val });
                                           }
                                         }}
                                         className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
                                     >
-                                        <option value="">{language === 'th' ? '-- เลือกสาเหตุการปิดห้อง --' : '-- Select Closure Reason --'}</option>
+                                        <option value="">{t.closureReasonSelectPlaceholder}</option>
                                         {CLOSURE_REASONS.map(r => (
                                           <option key={r.key} value={r.key}>
                                             {language === 'th' ? r.labelTh : r.labelEn}
@@ -1327,64 +2178,75 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                                 value={roomForm.closureReason === 'Custom Renovation' || roomForm.closureReason === 'ปรับปรุงห้อง' ? '' : roomForm.closureReason || ''}
                                                 onChange={(e) => setRoomForm({...roomForm, closureReason: e.target.value})}
                                                 className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                                placeholder={language === 'th' ? 'กรุณาระบุกิจกรรม/สาเหตุของท่าน...' : 'Please specify-your custom reason...'}
+                                                placeholder={t.customClosureReasonPlaceholder}
                                             />
                                         </div>
                                     )}
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartDateLabel}</label>
-                                        <input 
-                                            type="date"
-                                            value={roomForm.closureStartDate || ''}
-                                            onChange={(e) => setRoomForm({...roomForm, closureStartDate: e.target.value})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndDateLabel}</label>
-                                        <input 
-                                            type="date"
-                                            value={roomForm.closureEndDate || ''}
-                                            onChange={(e) => setRoomForm({...roomForm, closureEndDate: e.target.value})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                        />
-                                    </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureSelectedDateLabel}</label>
+                                    <input
+                                        type="date"
+                                        lang="en-US"
+                                        value={roomForm.closureStartDate || ''}
+                                        onChange={(e) => setRoomForm({
+                                            ...roomForm,
+                                            closureStartDate: e.target.value,
+                                            closureEndDate: e.target.value
+                                        })}
+                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
+                                    />
+                                    {roomForm.closureStartDate && (
+                                        <p className="mt-1 text-[11px] font-bold text-slate-500">{formatDateInputDisplay(roomForm.closureStartDate)}</p>
+                                    )}
+                                    <p className="mt-1 text-[11px] font-semibold text-slate-500">{t.selectDisableDateFirst}</p>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-3">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartTimeLabel}</label>
-                                        <select
-                                            value={roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : 7}
-                                            onChange={(e) => setRoomForm({...roomForm, closureStartTime: parseInt(e.target.value)})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                                        >
-                                            {Array.from({ length: 17 }, (_, i) => i + 7).map(h => (
-                                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                                            ))}
-                                        </select>
+                                {roomForm.closureStartDate && (
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartTimeLabel}</label>
+                                            <select
+                                                value={roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR}
+                                                onChange={(e) => {
+                                                    const start = parseInt(e.target.value);
+                                                    const currentEnd = roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12;
+                                                    setRoomForm({
+                                                        ...roomForm,
+                                                        closureStartTime: start,
+                                                        closureEndTime: currentEnd <= start ? Math.min(start + 1, BOOKING_END_HOUR) : currentEnd
+                                                    });
+                                                }}
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                                            >
+                                                {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR).map(h => (
+                                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndTimeLabel}</label>
+                                            <select
+                                                value={roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12}
+                                                onChange={(e) => setRoomForm({...roomForm, closureEndTime: parseInt(e.target.value)})}
+                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                                            >
+                                                {Array.from({
+                                                    length: BOOKING_END_HOUR - (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR)
+                                                }, (_, i) => i + (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR) + 1).map(h => (
+                                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                                                ))}
+                                            </select>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndTimeLabel}</label>
-                                        <select
-                                            value={roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 24}
-                                            onChange={(e) => setRoomForm({...roomForm, closureEndTime: parseInt(e.target.value)})}
-                                            className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                                        >
-                                            {Array.from({ length: 18 }, (_, i) => i + 7).map(h => (
-                                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                </div>
+                                )}
                             </div>
                         )}
                     </div>
+                    </div>
 
-                    <div className="pt-4 flex space-x-3">
+                    <div className="flex-shrink-0 border-t border-slate-100 bg-white p-6 flex space-x-3 shadow-[0_-8px_20px_rgba(15,23,42,0.04)]">
                         <button 
                             type="button"
                             onClick={() => setIsRoomModalOpen(false)}
@@ -1434,7 +2296,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 value={newUserForm.username}
                                 onChange={(e) => setNewUserForm({...newUserForm, username: e.target.value})}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                                placeholder="Username / Email"
+                                placeholder={t.usernameEmailPlaceholder}
                             />
                         </div>
                         <div>
@@ -1460,7 +2322,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ? 'border-rose-300 focus:ring-rose-500'
                                         : 'border-slate-300 focus:ring-brand-500'
                                 }`}
-                                placeholder="Password"
+                                placeholder={t.passwordPlaceholder}
                             />
                             {newUserFormErrors.password && (
                                 <p id="new-admin-password-error" className="mt-1 text-xs font-semibold text-rose-600">
@@ -1473,7 +2335,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {language === 'th' ? 'รหัสประจำตัวพนักงาน' : 'Employee ID'} <span className="text-rose-500">*</span>
+                                {t.employeeId} <span className="text-rose-500">*</span>
                             </label>
                             <input
                                 required
@@ -1497,7 +2359,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ? 'border-rose-300 focus:ring-rose-500'
                                         : 'border-slate-300 focus:ring-brand-500'
                                 }`}
-                                placeholder="e.g. 1234567"
+                                placeholder={t.employeeIdPlaceholder}
                             />
                             {newUserFormErrors.employeeId && (
                                 <p id="new-admin-employee-id-error" className="mt-1 text-xs font-semibold text-rose-600">
@@ -1507,7 +2369,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </div>
                         <div>
                             <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {language === 'th' ? 'เบอร์โต๊ะ/เบอร์โทรศัพท์' : 'Desk Phone'} <span className="text-rose-500">*</span>
+                                {t.deskPhone} <span className="text-rose-500">*</span>
                             </label>
                             <input
                                 required
@@ -1531,7 +2393,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                         ? 'border-rose-300 focus:ring-rose-500'
                                         : 'border-slate-300 focus:ring-brand-500'
                                 }`}
-                                placeholder="e.g. 5678"
+                                placeholder={t.deskPhonePlaceholder}
                             />
                             {newUserFormErrors.phone && (
                                 <p id="new-admin-phone-error" className="mt-1 text-xs font-semibold text-rose-600">
@@ -1552,8 +2414,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                 onChange={(e) => setNewUserForm({...newUserForm, department: e.target.value})}
                                 className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
                             >
-                                {DEPARTMENTS.map(d => (
-                                    <option key={d} value={d}>{translateText(d, language)}</option>
+                                {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                                    <option key={value} value={value}>{label}</option>
                                 ))}
                             </select>
                         </div>
@@ -1606,6 +2468,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         isDanger={confirmModal.isDanger}
         onConfirm={confirmModal.onConfirm}
         onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+      />
+
+      <AdminGuideModal
+        isOpen={isAdminGuideOpen}
+        onClose={() => setIsAdminGuideOpen(false)}
+        language={language}
+        t={t}
       />
     </div>
   );

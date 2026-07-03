@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>YAGEO SmartRoom</title>
+    <title>TOKIN Smart Room</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#e5673e" />
     <script src="https://cdn.tailwindcss.com"></script>
@@ -111,17 +111,76 @@
         position: relative;
         z-index: 1;
       }
+      .timeline-grid-scroll {
+        overscroll-behavior-x: contain;
+        scroll-behavior: auto;
+        scrollbar-gutter: stable;
+        -webkit-overflow-scrolling: touch;
+        container-type: inline-size;
+        contain: layout paint;
+      }
+      .timeline-grid-table {
+        table-layout: fixed;
+      }
+      .timeline-grid-slot {
+        width: clamp(96px, calc((100cqw - 8rem) / var(--timeline-hours, 12)), 142px);
+        min-width: clamp(96px, calc((100cqw - 8rem) / var(--timeline-hours, 12)), 142px);
+      }
+      @supports not (width: 1cqw) {
+        .timeline-grid-slot {
+          width: clamp(96px, calc((100vw - 13.75rem) / var(--timeline-hours, 12)), 142px);
+          min-width: clamp(96px, calc((100vw - 13.75rem) / var(--timeline-hours, 12)), 142px);
+        }
+      }
+      @media (max-width: 640px) {
+        .timeline-grid-slot {
+          width: 112px;
+          min-width: 112px;
+        }
+      }
+      .timeline-grid-sticky {
+        transform: translateZ(0);
+        backface-visibility: hidden;
+        contain: paint;
+      }
+      .timeline-grid-cell {
+        contain: layout paint;
+      }
+      .timeline-grid-line {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        overflow: hidden;
+        word-break: break-word;
+      }
+      .timeline-grid-purpose {
+        display: block;
+        max-width: 100%;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+      }
+      .timeline-grid-purpose-track {
+        display: block;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
       @media (prefers-reduced-motion: reduce) {
         .booking-it-neon,
         .booking-it-neon::after {
-          animation: none;
+          display: block;
+          max-width: 100%;
+          min-width: 0;
+          overflow: hidden;
+          text-overflow: ellipsis;
         }
       }
     </style>
   <script type="importmap">
 {
   "imports": {
-    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "lucide-react": "https://esm.sh/lucide-react@^0.562.0",
     "react/": "https://esm.sh/react@^19.2.3/",
@@ -136,3 +195,4 @@
   <script type="module" src="/index.tsx"></script>
 </body>
 </html>
+

@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Room, Booking, BookingStatus } from '../types';
 import { X, Calendar, Clock, User, AlertCircle, Building2, IdCard, Trash2 } from 'lucide-react';
-import { TRANSLATIONS, formatDate, formatTimeValue, translateText, isRoomClosedAt } from '../translations';
-import { getBookingDepartmentClass } from '../bookingVisualStyles';
+import { TRANSLATIONS, formatDate, formatTimeValue, translateText, isRoomClosedAt, formatDepartment, getDepartmentSelectOptions } from '../translations';
+import { getBookingDepartmentClass, getBookingDepartmentDotClass } from '../bookingVisualStyles';
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 
 interface BookingModalProps {
@@ -92,12 +92,9 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
       const dateStr = String(d.getDate()).padStart(2, '0');
       const value = `${year}-${month}-${dateStr}`;
 
-      // Thai: วันศุกร์ที่ 12/06/69
-      const thaiYearShort = String(year + 543).slice(-2);
-      const labelTh = `${daysOfWeekTh[d.getDay()]} ${dateStr}/${month}/${thaiYearShort}`;
-
-      // English international format: DD/MM/YYYY
-      const labelEn = `${daysOfWeekEn[d.getDay()]}, ${dateStr}/${month}/${year}`;
+      const displayDate = `${month}/${dateStr}/${year}`;
+      const labelTh = `${daysOfWeekTh[d.getDay()]} ${displayDate}`;
+      const labelEn = `${daysOfWeekEn[d.getDay()]}, ${displayDate}`;
 
       dates.push({ value, label: language === 'th' ? labelTh : labelEn });
     }
@@ -327,7 +324,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                             : isSelected
                                                 ? 'bg-orange-500 border-orange-600 text-white font-bold cursor-pointer hover:bg-orange-600 shadow-sm'
                                                 : booking
-                                                    ? 'bg-orange-50 border-orange-200 text-orange-700 cursor-not-allowed font-semibold'
+                                                    ? 'cursor-not-allowed font-semibold'
                                                     : 'bg-white border-slate-200 text-slate-400 hover:border-orange-300 hover:text-orange-500 hover:shadow-sm cursor-pointer'
                                     }`}
                                 title={isPast
@@ -337,7 +334,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                         : isSelected
                                             ? (language === 'th' ? 'คลิกซ้ำเพื่อยกเลิกการเลือก' : 'Click again to deselect')
                                             : booking
-                                                ? `${language === 'th' ? 'จองแล้ว:' : 'Booked:'} ${translateText(booking.title, language)} (${booking.organizer} - ${booking.department})`
+                                                ? `${language === 'th' ? 'จองแล้ว:' : 'Booked:'} ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'})`
                                                 : (language === 'th' ? 'คลิกเพื่อเลือกจับจองช่วงเวลานี้' : 'Click to select this slot')
                                 }
                            >
@@ -353,8 +350,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                         {booking ? translateText(booking.title, language) : (language === 'th' ? 'เลือกแล้ว (จอง)' : 'Selected')}
                                     </span>
                                 ) : booking ? (
-                                    <span className="text-orange-700 font-bold truncate flex items-center">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mr-1.5 flex-shrink-0"></span>
+                                    <span className="font-bold truncate flex items-center text-inherit">
+                                        <span className={`w-1.5 h-1.5 rounded-full ${getBookingDepartmentDotClass(booking.department)} mr-1.5 flex-shrink-0`}></span>
                                         {translateText(booking.title, language)} ({booking.organizer})
                                     </span>
                                 ) : (
@@ -480,8 +477,8 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                 className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent appearance-none bg-white font-medium"
                             >
                                 <option value="" disabled>{t.selectDeptOption}</option>
-                                {DEPARTMENTS.map(dept => (
-                                    <option key={dept} value={dept}>{dept}</option>
+                                {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                                    <option key={value} value={value}>{label}</option>
                                 ))}
                             </select>
                         </div>

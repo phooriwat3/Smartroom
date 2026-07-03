@@ -73,9 +73,36 @@ export interface Booking {
   actualEndTime?: Date;
   noShowMarkedAt?: any;
   verifiedAt?: any;
-  verificationEmailStatus?: 'queued' | 'sent' | 'failed';
+  verificationEmailStatus?: 'queued' | 'pending_retry' | 'sending' | 'sent' | 'failed';
+  verificationEmailScheduledAt?: Date;
+  verificationWindowOpenedAt?: Date;
+  verificationWindowClosedAt?: Date;
+  verificationEmailNextRetryAt?: Date;
+  verificationEmailLastAttemptAt?: any;
+  verificationEmailRetryCount?: number;
   verificationEmailFailedAt?: any;
+  verificationEmailFailureCode?: string;
+  verificationEmailFailureMessage?: string;
   verifyUrl?: string;
+}
+
+export type EmailSentStatus = 'successful' | 'failed';
+
+export interface EmailSentHistoryRecord {
+  id: string;
+  recipientEmail: string;
+  recipientName?: string;
+  subject: string;
+  purpose: string;
+  sentAt: Date;
+  status: EmailSentStatus;
+  relatedBookingId?: string;
+  relatedBookingTitle?: string;
+  relatedRoomId?: string;
+  relatedRoomName?: string;
+  errorCode?: string;
+  errorMessage?: string;
+  createdAt?: any;
 }
 
 export interface ChatMessage {
