@@ -152,6 +152,7 @@ interface AdminPanelProps {
   loginPresentation?: 'page' | 'modal';
   onCancelLogin?: () => void;
   onLoginSuccess?: () => void;
+  onVerifyBooking?: (id: string) => void;
 }
 
 type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected';
@@ -164,6 +165,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onUpdateBooking,
   onApproveBooking,
   onRejectBooking,
+  onVerifyBooking,
   onAddRoom,
   onUpdateRoom,
   onDeleteRoom,
@@ -1367,6 +1369,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                                   </button>
                                 </>
                               )}
+                              {getAdminBookingDisplayState(booking) === 'waitForVerify' && onVerifyBooking && (
+                                <button
+                                  onClick={() => onVerifyBooking(booking.id)}
+                                  className="inline-flex items-center justify-center text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 hover:border-indigo-700 p-1.5 rounded-lg transition-all shadow-sm"
+                                  title={language === 'th' ? 'ยืนยันการใช้งานห้อง' : 'Verify Booking'}
+                                >
+                                  <ShieldCheck className="w-4 h-4" />
+                                </button>
+                              )}
                               {onUpdateBooking && (
                                 <button
                                   onClick={() => setEditingBooking(booking)}
@@ -1714,6 +1725,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </td>
                         <td className="sticky right-0 z-10 bg-white pl-2 pr-4 py-4 text-right align-top group-hover:bg-slate-50 shadow-[-10px_0_14px_rgba(15,23,42,0.04)]">
                           <div className="flex items-center justify-end space-x-1.5">
+                            {getAdminBookingDisplayState(booking) === 'waitForVerify' && onVerifyBooking && (
+                              <button
+                                onClick={() => onVerifyBooking(booking.id)}
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-white border border-indigo-600 bg-indigo-500 hover:bg-indigo-600 shadow-sm transition-all"
+                                title={language === 'th' ? 'ยืนยันการใช้งานห้อง' : 'Verify Booking'}
+                              >
+                                <ShieldCheck className="w-4 h-4" />
+                              </button>
+                            )}
                             {onUpdateBooking && (
                               <button
                                 onClick={() => setEditingBooking(booking)}

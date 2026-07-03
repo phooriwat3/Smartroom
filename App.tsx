@@ -12,7 +12,7 @@ import { TRANSLATIONS, getEffectiveRoomStatus, isRoomClosureExpired, isRoomClose
 import { LayoutGrid, Calendar, BarChart3, Settings, Check, XCircle, AlertCircle, BookOpen, Menu, X } from 'lucide-react';
 import { TermsModal, AccessDeniedOverlay } from './components/TermsModal';
 import { UserGuideModal } from './components/UserGuideModal';
-import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
@@ -837,6 +837,21 @@ const SmartRoomApplication: React.FC = () => {
     }
   };
 
+  const handleVerifyBooking = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'bookings', id), {
+        status: BookingStatus.VERIFIED,
+        verifiedAt: serverTimestamp(),
+        actualStartTime: serverTimestamp(),
+        verificationMethod: 'admin'
+      });
+      showNotification(language === 'th' ? 'ยืนยันการใช้งานห้องเรียบร้อยแล้ว' : 'Booking verified successfully', 'success');
+    } catch (e) {
+      console.error("Failed to verify booking:", e);
+      showNotification(language === 'th' ? `ยืนยันไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` : `Verification failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
+    }
+  };
+
   const handleRejectBooking = async (id: string) => {
     setConfirmModal({
       isOpen: true,
@@ -1369,6 +1384,7 @@ const SmartRoomApplication: React.FC = () => {
             onUpdateBooking={handleUpdateBooking}
             onApproveBooking={handleApproveBooking}
             onRejectBooking={handleRejectBooking}
+            onVerifyBooking={handleVerifyBooking}
             onAddRoom={handleAddRoom}
             onUpdateRoom={handleUpdateRoom}
             onDeleteRoom={handleDeleteRoom}
@@ -1712,6 +1728,7 @@ const SmartRoomApplication: React.FC = () => {
                 onUpdateBooking={handleUpdateBooking}
                 onApproveBooking={handleApproveBooking}
                 onRejectBooking={handleRejectBooking}
+                onVerifyBooking={handleVerifyBooking}
                 onAddRoom={handleAddRoom}
                 onUpdateRoom={handleUpdateRoom}
                 onDeleteRoom={handleDeleteRoom}
