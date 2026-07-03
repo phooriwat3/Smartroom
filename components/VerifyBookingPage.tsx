@@ -254,7 +254,7 @@ const VerifyBookingPage: React.FC<VerifyBookingPageProps> = ({ language }) => {
             <CheckCircle2 className="h-12 w-12 text-emerald-500" />
             <h1 className="mt-4 text-xl font-bold text-slate-900">
               {state.alreadyVerified
-                ? (language === 'th' ? 'ยืนยันแล้ว' : 'Already verified')
+                ? (language === 'th' ? 'ยืนยันการจองนี้แล้ว' : 'You already verified this booking')
                 : (language === 'th' ? 'ยืนยันการจองสำเร็จ' : 'Booking verified')}
             </h1>
             {state.title && (

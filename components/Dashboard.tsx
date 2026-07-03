@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { httpsCallable } from 'firebase/functions';
 import { Room, Booking, BookingStatus, RoomMaintenanceRecord } from '../types';
 import {
   Users,
@@ -27,6 +28,7 @@ import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState } fro
 import CheckInValidationModal from './CheckInValidationModal';
 
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR, DEPARTMENTS } from '../constants';
+import { functions } from '../firebase';
 import { BookingDisplayState, getBookingDisplayState as getSharedBookingDisplayState, isBookingNoCheckIn } from '../utils/bookingStatus';
 
 export type DashboardMainView = 'status' | 'timeline';
@@ -43,6 +45,14 @@ interface DashboardProps {
   setSelectedRoomId: (id: string) => void;
   activeView?: DashboardMainView;
   onActiveViewChange?: (view: DashboardMainView) => void;
+}
+
+interface YageoMailboxUser {
+  displayName?: string;
+  mail?: string;
+  userPrincipalName?: string;
+  department?: string;
+  jobTitle?: string;
 }
 
 const Dashboard: React.FC<DashboardProps> = ({
@@ -133,6 +143,10 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [department, setDepartment] = useState('');
   const [employeeId, setEmployeeId] = useState('');
   const [email, setEmail] = useState('');
+  const [emailSuggestions, setEmailSuggestions] = useState<YageoMailboxUser[]>([]);
+  const [selectedEmailUser, setSelectedEmailUser] = useState<YageoMailboxUser | null>(null);
+  const [isEmailLookupLoading, setIsEmailLookupLoading] = useState(false);
+  const [isEmailSuggestionsOpen, setIsEmailSuggestionsOpen] = useState(false);
   const [deskNumber, setDeskNumber] = useState('');
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [selectedHours, setSelectedHours] = useState<number[]>([]);
@@ -145,6 +159,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     onActiveViewChange?.(view);
   };
   const [checkInBooking, setCheckInBooking] = useState<Booking | null>(null);
+  const emailLookupRequestIdRef = useRef(0);
 
   // Load selected room details
   const selectedRoom = useMemo(() => {
@@ -164,7 +179,54 @@ const Dashboard: React.FC<DashboardProps> = ({
     setBookingError(null);
     setTitle('');
     setEmail('');
+    setSelectedEmailUser(null);
+    setEmailSuggestions([]);
+    setIsEmailSuggestionsOpen(false);
   }, [selectedRoomId, dateStr]);
+
+  useEffect(() => {
+    const query = email.trim();
+    const requestId = emailLookupRequestIdRef.current + 1;
+    emailLookupRequestIdRef.current = requestId;
+    const selectedMailbox = (selectedEmailUser?.mail || selectedEmailUser?.userPrincipalName || '').trim().toLowerCase();
+
+    if (selectedMailbox && selectedMailbox === query.toLowerCase()) {
+      setEmailSuggestions([]);
+      setIsEmailLookupLoading(false);
+      setIsEmailSuggestionsOpen(false);
+      return;
+    }
+
+    if (query.length < 2) {
+      setEmailSuggestions([]);
+      setIsEmailLookupLoading(false);
+      return;
+    }
+
+    const timeout = window.setTimeout(async () => {
+      setIsEmailLookupLoading(true);
+      try {
+        const searchMailboxes = httpsCallable(functions, 'searchYageoMailboxes');
+        const response = await searchMailboxes({ query });
+        if (emailLookupRequestIdRef.current !== requestId) return;
+
+        const data = response.data as { users?: YageoMailboxUser[] };
+        setEmailSuggestions(Array.isArray(data.users) ? data.users : []);
+        setIsEmailSuggestionsOpen(true);
+      } catch (error) {
+        if (emailLookupRequestIdRef.current !== requestId) return;
+        console.error('YAGEO mailbox search failed:', error);
+        setEmailSuggestions([]);
+        setIsEmailSuggestionsOpen(true);
+      } finally {
+        if (emailLookupRequestIdRef.current === requestId) {
+          setIsEmailLookupLoading(false);
+        }
+      }
+    }, 350);
+
+    return () => window.clearTimeout(timeout);
+  }, [email, selectedEmailUser]);
 
   // Define bookable blocks: 07:00 - 19:00, with the last selectable block ending at 19:00.
   const hours = useMemo(() => BOOKABLE_HOURS, []);
@@ -495,6 +557,33 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
   };
 
+  const getMailboxEmail = (user: YageoMailboxUser) => (
+    user.mail || user.userPrincipalName || ''
+  ).trim().toLowerCase();
+
+  const getMailboxInitials = (user: YageoMailboxUser) => {
+    const label = user.displayName || getMailboxEmail(user);
+    const words = label.split(/[\s.]+/).filter(Boolean);
+    if (words.length === 0) return 'YG';
+    if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+    return `${words[0][0]}${words[1][0]}`.toUpperCase();
+  };
+
+  const getMailboxRoleLine = (user: YageoMailboxUser) => (
+    [user.jobTitle, user.department].map(value => value?.trim()).filter(Boolean).join(' - ')
+  );
+
+  const handleSelectEmailSuggestion = (user: YageoMailboxUser) => {
+    const selectedEmail = getMailboxEmail(user);
+    if (!selectedEmail) return;
+
+    setSelectedEmailUser(user);
+    setEmail(selectedEmail);
+    setEmailSuggestions([]);
+    setIsEmailSuggestionsOpen(false);
+    setBookingError(null);
+  };
+
   const handleInlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!onConfirmBooking || !selectedRoom) return;
@@ -577,6 +666,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         department,
         employeeId: employeeId.trim(),
         email: normalizedEmail,
+        emailDisplayName: selectedEmailUser?.displayName || '',
+        emailJobTitle: selectedEmailUser?.jobTitle || '',
+        emailDepartment: selectedEmailUser?.department || '',
         deskNumber: deskNumber.trim(),
         startTime,
         endTime,
@@ -591,12 +683,13 @@ const Dashboard: React.FC<DashboardProps> = ({
         setOrganizer('');
         setEmployeeId('');
         setEmail('');
+        setSelectedEmailUser(null);
         setDepartment('');
         setDeskNumber('');
         setIsDetailsModalOpen(false);
         setBookingError(null);
       } else {
-        setBookingError(language === 'th' ? 'ช่วงเวลานี้ถูกจองหมดแล้ว กรุณาเลือกช่วงเวลาอื่น' : 'The selected times are already booked. Please try different blocks.');
+        setBookingError('Unable to complete booking. Please check the email, selected times, and room availability.');
       }
     } catch (err: any) {
       setBookingError(err.message || 'Error occurred during booking');
@@ -1551,7 +1644,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       {isDetailsModalOpen && selectedRoom && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
           <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden border border-slate-100 flex flex-col animate-in zoom-in-95 duration-200"
+            className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-visible border border-slate-100 flex flex-col animate-in zoom-in-95 duration-200"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
@@ -1654,18 +1747,108 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
-              <div>
+              <div className="relative">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   {language === 'th' ? 'อีเมล YAGEO' : 'YAGEO Email'} <span className="text-rose-500">*</span>
                 </label>
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="email"
                   required
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => {
+                    setSelectedEmailUser(null);
+                    setEmail(e.target.value);
+                    setIsEmailSuggestionsOpen(e.target.value.trim().length >= 2);
+                  }}
+                  onFocus={() => setIsEmailSuggestionsOpen(!selectedEmailUser && email.trim().length >= 2)}
+                  onBlur={() => window.setTimeout(() => setIsEmailSuggestionsOpen(false), 150)}
                   placeholder="name@yageo.com"
+                  role="combobox"
+                  aria-expanded={isEmailSuggestionsOpen}
+                  aria-controls="yageo-email-suggestions"
                   className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                 />
+                {selectedEmailUser && (
+                  <div className="mt-2 flex items-center gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/80 p-3 shadow-sm">
+                    <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-sky-500 text-sm font-black text-white shadow-sm">
+                      {getMailboxInitials(selectedEmailUser)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-bold text-slate-950">
+                        {selectedEmailUser.displayName || getMailboxEmail(selectedEmailUser)}
+                      </div>
+                      <div className="truncate text-xs font-semibold text-slate-600">
+                        {getMailboxEmail(selectedEmailUser)}
+                      </div>
+                      {getMailboxRoleLine(selectedEmailUser) && (
+                        <div className="truncate text-xs font-bold uppercase tracking-wide text-indigo-900">
+                          {getMailboxRoleLine(selectedEmailUser)}
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEmailUser(null);
+                        setEmail('');
+                        setEmailSuggestions([]);
+                        setIsEmailSuggestionsOpen(false);
+                      }}
+                      className="flex-shrink-0 rounded-full border border-rose-200 bg-white px-4 py-2 text-xs font-black text-rose-600 shadow-sm transition-colors hover:bg-rose-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                )}
+                {isEmailSuggestionsOpen && (
+                  <div
+                    id="yageo-email-suggestions"
+                    role="listbox"
+                    className="absolute left-1/2 right-auto top-full z-[80] mt-2 max-h-[min(62vh,32rem)] w-[min(42rem,calc(100vw-3rem))] -translate-x-1/2 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"
+                  >
+                    {isEmailLookupLoading ? (
+                      <div className="px-3 py-3 text-xs font-semibold text-slate-500">Searching YAGEO mailboxes...</div>
+                    ) : emailSuggestions.length > 0 ? (
+                      emailSuggestions.map(user => {
+                        const mailboxEmail = getMailboxEmail(user);
+                        if (!mailboxEmail) return null;
+
+                        return (
+                          <button
+                            key={mailboxEmail}
+                            type="button"
+                            role="option"
+                            onMouseDown={(event) => {
+                              event.preventDefault();
+                              handleSelectEmailSuggestion(user);
+                            }}
+                            className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors hover:bg-indigo-50 focus:bg-indigo-50 focus:outline-none"
+                          >
+                            <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-slate-900 text-[11px] font-black text-white">
+                              {getMailboxInitials(user)}
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-black text-slate-950">
+                                {user.displayName || mailboxEmail}
+                              </span>
+                              <span className="block truncate text-xs font-semibold text-slate-600">
+                                {mailboxEmail}
+                              </span>
+                              {getMailboxRoleLine(user) && (
+                                <span className="block truncate text-[11px] font-bold uppercase tracking-wide text-indigo-800">
+                                  {getMailboxRoleLine(user)}
+                                </span>
+                              )}
+                            </span>
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <div className="px-3 py-3 text-xs font-semibold text-slate-500">No matching YAGEO mailbox found.</div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3">

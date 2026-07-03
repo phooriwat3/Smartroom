@@ -1084,6 +1084,16 @@ const SmartRoomApplication: React.FC = () => {
     };
   };
 
+  const verifyYageoMailbox = async (email: string) => {
+    const lookupMailbox = httpsCallable(functions, 'lookupYageoMailbox');
+    const response = await lookupMailbox({ email });
+    const data = response.data as { exists?: boolean };
+
+    if (!data.exists) {
+      throw new Error('No active YAGEO mailbox matched this email address.');
+    }
+  };
+
   const markBookingNoShow = async (bookingId: string) => {
     const markNoShow = httpsCallable(functions, 'markBookingNoShow');
     await markNoShow({ bookingId });
@@ -1155,6 +1165,22 @@ const SmartRoomApplication: React.FC = () => {
           return false;
         }
 
+        const normalizedBookingEmail = isYageoEmail(bookingData.email)
+          ? bookingData.email.trim().toLowerCase()
+          : '';
+        if (!normalizedBookingEmail) {
+          showNotification('Please enter a valid @yageo.com email address.', 'error');
+          return false;
+        }
+
+        try {
+          await verifyYageoMailbox(normalizedBookingEmail);
+        } catch (lookupError) {
+          console.error('YAGEO mailbox lookup failed:', lookupError);
+          showNotification('Cannot verify this YAGEO mailbox. Please check the email address.', 'error');
+          return false;
+        }
+
         const newBooking: any = {
           id: newBookingId,
           roomId: bookingData.roomId,
@@ -1163,6 +1189,9 @@ const SmartRoomApplication: React.FC = () => {
           department: bookingData.department,
           employeeId: bookingData.employeeId,
           deskNumber: bookingData.deskNumber || '',
+          emailDisplayName: bookingData.emailDisplayName || '',
+          emailJobTitle: bookingData.emailJobTitle || '',
+          emailDepartment: bookingData.emailDepartment || '',
           startTime: bookingData.startTime,
           endTime: bookingData.endTime,
           status: BookingStatus.CONFIRMED, // Automatically confirm new bookings
@@ -1173,9 +1202,7 @@ const SmartRoomApplication: React.FC = () => {
           verificationWindowClosedAt: verificationWindowEnd
         };
 
-        if (isYageoEmail(bookingData.email)) {
-          newBooking.email = bookingData.email.trim().toLowerCase();
-        }
+        newBooking.email = normalizedBookingEmail;
 
         await setDoc(doc(db, 'bookings', newBookingId), newBooking);
         try {

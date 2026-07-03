@@ -61,6 +61,9 @@ export interface Booking {
   department: string;
   employeeId: string;
   email?: string;
+  emailDisplayName?: string;
+  emailJobTitle?: string;
+  emailDepartment?: string;
   startTime: Date; // JavaScript Date object
   endTime: Date;   // JavaScript Date object
   status: BookingStatus;
