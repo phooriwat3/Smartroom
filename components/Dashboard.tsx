@@ -584,6 +584,27 @@ const Dashboard: React.FC<DashboardProps> = ({
     setBookingError(null);
   };
 
+  const validateExactYageoMailbox = async (normalizedEmail: string) => {
+    const selectedMailbox = selectedEmailUser ? getMailboxEmail(selectedEmailUser) : '';
+    if (selectedEmailUser && selectedMailbox === normalizedEmail) {
+      return selectedEmailUser;
+    }
+
+    const lookupMailbox = httpsCallable(functions, 'lookupYageoMailbox');
+    const response = await lookupMailbox({ email: normalizedEmail });
+    const data = response.data as { exists?: boolean; email?: string; user?: YageoMailboxUser };
+    const responseEmail = (data.email || '').trim().toLowerCase();
+    const responseUserEmail = data.user ? getMailboxEmail(data.user) : '';
+
+    if (!data.exists || (responseEmail !== normalizedEmail && responseUserEmail !== normalizedEmail)) {
+      throw new Error('Select a YAGEO mailbox from the dropdown, or type an exact mailbox email address.');
+    }
+
+    return data.user && getMailboxEmail(data.user) === normalizedEmail
+      ? data.user
+      : { ...(data.user || {}), mail: normalizedEmail };
+  };
+
   const handleInlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!onConfirmBooking || !selectedRoom) return;
@@ -629,6 +650,12 @@ const Dashboard: React.FC<DashboardProps> = ({
       return;
     }
 
+    const selectedMailbox = selectedEmailUser ? getMailboxEmail(selectedEmailUser) : '';
+    if (selectedEmailUser && selectedMailbox !== normalizedEmail) {
+      setBookingError('The selected mailbox no longer matches the typed email. Please select the mailbox again.');
+      return;
+    }
+
     if (!department) {
       setBookingError(language === 'th' ? 'กรุณาเลือกแผนกผู้ใช้สิทธิ์' : 'Please select a department.');
       return;
@@ -658,6 +685,9 @@ const Dashboard: React.FC<DashboardProps> = ({
       const endTime = new Date(selectedDateObj);
       endTime.setHours(endHour, 0, 0, 0);
 
+      const verifiedEmailUser = await validateExactYageoMailbox(normalizedEmail);
+      setSelectedEmailUser(verifiedEmailUser);
+
       const bookingData = {
         roomId: selectedRoom.id,
         roomName: selectedRoom.name,
@@ -666,9 +696,9 @@ const Dashboard: React.FC<DashboardProps> = ({
         department,
         employeeId: employeeId.trim(),
         email: normalizedEmail,
-        emailDisplayName: selectedEmailUser?.displayName || '',
-        emailJobTitle: selectedEmailUser?.jobTitle || '',
-        emailDepartment: selectedEmailUser?.department || '',
+        emailDisplayName: verifiedEmailUser.displayName || '',
+        emailJobTitle: verifiedEmailUser.jobTitle || '',
+        emailDepartment: verifiedEmailUser.department || '',
         deskNumber: deskNumber.trim(),
         startTime,
         endTime,
