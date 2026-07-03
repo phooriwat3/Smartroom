@@ -25,6 +25,7 @@ const EMAIL_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 const CHECK_IN_WINDOW_BEFORE_MS = 15 * 60 * 1000;
 const CHECK_IN_WINDOW_AFTER_MS = 15 * 60 * 1000;
 const POWER_AUTOMATE_VERIFICATION_FLOW_URL = defineSecret("POWER_AUTOMATE_VERIFICATION_FLOW_URL");
+const POWER_AUTOMATE_USER_LOOKUP_FLOW_URL = defineSecret("POWER_AUTOMATE_USER_LOOKUP_FLOW_URL");
 const DEFAULT_APP_BASE_URL = "https://tokinsmartroom-495306.web.app/";
 const LEGACY_APP_BASE_URLS = new Set([
   "https://tokinsmartroom.web.app",
@@ -49,6 +50,10 @@ const APP_HTTPS_OPTIONS = {
 const EMAIL_HTTPS_OPTIONS = {
   ...APP_HTTPS_OPTIONS,
   secrets: [POWER_AUTOMATE_VERIFICATION_FLOW_URL],
+};
+const USER_LOOKUP_HTTPS_OPTIONS = {
+  ...APP_HTTPS_OPTIONS,
+  secrets: [POWER_AUTOMATE_USER_LOOKUP_FLOW_URL],
 };
 
 function isLocalOrLegacyAppUrl(value) {
@@ -518,7 +523,7 @@ function uniqueSanitizedUsers(users) {
 }
 
 async function lookupPowerAutomateYageoUsers(query) {
-  const flowUrl = process.env.POWER_AUTOMATE_USER_LOOKUP_FLOW_URL;
+  const flowUrl = (POWER_AUTOMATE_USER_LOOKUP_FLOW_URL.value() || process.env.POWER_AUTOMATE_USER_LOOKUP_FLOW_URL || "").trim();
   if (!flowUrl) {
     throw new HttpsError(
       "failed-precondition",
@@ -564,7 +569,7 @@ async function lookupPowerAutomateYageoUser(email) {
   return users.find(user => getLookupUserEmails(user).includes(email)) || null;
 }
 
-exports.lookupYageoMailbox = onCall(APP_HTTPS_OPTIONS, async (request) => {
+exports.lookupYageoMailbox = onCall(USER_LOOKUP_HTTPS_OPTIONS, async (request) => {
   try {
     const data = request.data || {};
     const email = assertYageoEmail(data.email || data.query);
@@ -599,7 +604,7 @@ exports.lookupYageoMailbox = onCall(APP_HTTPS_OPTIONS, async (request) => {
   }
 });
 
-exports.searchYageoMailboxes = onCall(APP_HTTPS_OPTIONS, async (request) => {
+exports.searchYageoMailboxes = onCall(USER_LOOKUP_HTTPS_OPTIONS, async (request) => {
   try {
     const data = request.data || {};
     const query = assertSearchQuery(data.query || data.email);
