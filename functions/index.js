@@ -236,6 +236,209 @@ async function sendPowerAutomateEmail(payload) {
   }
 }
 
+function parseJsonText(value) {
+  if (typeof value !== "string" || !value.trim()) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    return value;
+  }
+}
+
+function extractLookupUsers(value) {
+  const parsed = parseJsonText(value);
+  if (Array.isArray(parsed)) {
+    return parsed;
+  }
+
+  if (!parsed || typeof parsed !== "object") {
+    return [];
+  }
+
+  for (const key of ["users", "value", "body", "data", "results"]) {
+    if (Object.prototype.hasOwnProperty.call(parsed, key)) {
+      const users = extractLookupUsers(parsed[key]);
+      if (users.length > 0) {
+        return users;
+      }
+    }
+  }
+
+  return [];
+}
+
+function normalizeEmailValue(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function getLookupUserEmails(user) {
+  if (!user || typeof user !== "object") {
+    return [];
+  }
+
+  return [
+    user.mail,
+    user.email,
+    user.userPrincipalName,
+    user.userprincipalname,
+    user.userPrincipalname,
+    user.upn,
+  ].map(normalizeEmailValue).filter(Boolean);
+}
+
+function sanitizeLookupUser(user) {
+  if (!user || typeof user !== "object") {
+    return {};
+  }
+
+  return {
+    displayName: typeof user.displayName === "string" ? user.displayName : "",
+    mail: normalizeEmailValue(user.mail || user.email),
+    userPrincipalName: normalizeEmailValue(user.userPrincipalName || user.userprincipalname || user.upn),
+    department: typeof user.department === "string" ? user.department : "",
+    jobTitle: typeof user.jobTitle === "string" ? user.jobTitle : "",
+  };
+}
+
+function assertSearchQuery(value) {
+  const query = assertString(value, "query");
+  if (query.length < 2 || query.length > 254) {
+    throw new HttpsError("invalid-argument", "query must be between 2 and 254 characters.");
+  }
+
+  return query;
+}
+
+function uniqueSanitizedUsers(users) {
+  const seen = new Set();
+  const result = [];
+
+  for (const user of users) {
+    const sanitized = sanitizeLookupUser(user);
+    const key = sanitized.mail || sanitized.userPrincipalName;
+    if (!key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    result.push(sanitized);
+  }
+
+  return result;
+}
+
+async function lookupPowerAutomateYageoUsers(query) {
+  const flowUrl = process.env.POWER_AUTOMATE_USER_LOOKUP_FLOW_URL;
+  if (!flowUrl) {
+    throw new HttpsError(
+      "failed-precondition",
+      "POWER_AUTOMATE_USER_LOOKUP_FLOW_URL is not configured.",
+      { missingEnv: "POWER_AUTOMATE_USER_LOOKUP_FLOW_URL" }
+    );
+  }
+
+  let response;
+  try {
+    response = await fetch(flowUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ query }),
+    });
+  } catch (error) {
+    console.error("Power Automate user lookup request failed", {
+      message: error && error.message,
+      stack: error && error.stack,
+    });
+    throw new HttpsError("unavailable", "Power Automate user lookup request failed.", {
+      reason: error && error.message ? error.message : String(error),
+    });
+  }
+
+  const responseText = await response.text().catch(() => "");
+  if (!response.ok) {
+    const details = {
+      status: response.status,
+      statusText: response.statusText,
+      body: responseText.slice(0, 1000),
+    };
+    console.error("Power Automate user lookup failed", details);
+    throw new HttpsError("unavailable", "Power Automate user lookup did not accept the request.", details);
+  }
+
+  const payload = parseJsonText(responseText);
+  return extractLookupUsers(payload);
+}
+
+async function lookupPowerAutomateYageoUser(email) {
+  const users = await lookupPowerAutomateYageoUsers(email);
+  return users.find(user => getLookupUserEmails(user).includes(email)) || null;
+}
+
+exports.lookupYageoMailbox = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    const email = assertYageoEmail(data.email || data.query);
+    const matchedUser = await lookupPowerAutomateYageoUser(email);
+
+    if (!matchedUser) {
+      throw new HttpsError("not-found", "No active YAGEO mailbox matched this email address.", {
+        email,
+      });
+    }
+
+    return {
+      exists: true,
+      email,
+      user: sanitizeLookupUser(matchedUser),
+    };
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      throw error;
+    }
+
+    console.error("lookupYageoMailbox failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `YAGEO mailbox lookup failed: ${error && error.message ? error.message : String(error)}`
+    );
+  }
+});
+
+exports.searchYageoMailboxes = onCall(APP_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    const query = assertSearchQuery(data.query || data.email);
+    const users = await lookupPowerAutomateYageoUsers(query);
+
+    return {
+      users: uniqueSanitizedUsers(users).slice(0, 10),
+    };
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      throw error;
+    }
+
+    console.error("searchYageoMailboxes failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `YAGEO mailbox search failed: ${error && error.message ? error.message : String(error)}`
+    );
+  }
+});
+
 function assertString(value, name) {
   if (typeof value !== "string" || value.trim() === "") {
     throw new HttpsError("invalid-argument", `${name} is required.`);
