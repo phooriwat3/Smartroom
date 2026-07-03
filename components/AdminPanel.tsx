@@ -702,6 +702,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const analyticsData = useMemo(() => {
     const totalBookings = analyticsBookingsForDate.length;
 
+    // Count unique days in the dataset
+    const uniqueDays = new Set<string>();
+    analyticsBookingsForDate.forEach(b => {
+      if (b.startTime) {
+        uniqueDays.add(new Date(b.startTime).toDateString());
+      }
+    });
+    const daysCount = uniqueDays.size || 1;
+
     // Occupied hours per room (assume standard 10-hour workday segment: 08:00 - 18:00)
     const roomStats = sortedRooms.map(room => {
       const roomBookings = analyticsBookingsForDate.filter(b => b.roomId === room.id);
@@ -711,7 +720,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         hoursBooked += diffMs / (1000 * 60 * 60);
       });
 
-      const occupancyRate = totalBookings > 0 ? Math.round((roomBookings.length / totalBookings) * 100) : 0;
+      // Workday is 10 hours. Total available workday hours = 10 * daysCount
+      const availableWorkdayHours = 10 * daysCount;
+      const occupancyRate = Math.min(100, Math.round((hoursBooked / availableWorkdayHours) * 100));
 
       return {
         room,
@@ -725,16 +736,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const busiestRoom = busiestRoomObj && busiestRoomObj.hoursBooked > 0 ? busiestRoomObj.room.name : t.noBookings;
 
     // Department breakdown
-    const departmentCounts: Record<string, number> = {};
+    const departmentStats: Record<string, { count: number; hours: number }> = {};
     analyticsBookingsForDate.forEach(b => {
       const dept = b.department || 'Other';
-      departmentCounts[dept] = (departmentCounts[dept] || 0) + 1;
+      if (!departmentStats[dept]) {
+        departmentStats[dept] = { count: 0, hours: 0 };
+      }
+      departmentStats[dept].count += 1;
+      const diffMs = Math.max(0, b.endTime.getTime() - b.startTime.getTime());
+      departmentStats[dept].hours += diffMs / (1000 * 60 * 60);
     });
 
-    const departmentData = Object.entries(departmentCounts).map(([name, count]) => ({
+    const departmentData = Object.entries(departmentStats).map(([name, stats]) => ({
       name,
-      count,
-      pct: totalBookings > 0 ? Math.round((count / totalBookings) * 100) : 0
+      count: stats.count,
+      hours: parseFloat(stats.hours.toFixed(1)),
+      pct: totalBookings > 0 ? Math.round((stats.count / totalBookings) * 100) : 0
     })).sort((a, b) => b.count - a.count);
 
     // Peak booking hour
@@ -1497,7 +1514,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                             <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
                             {formatDepartment(dept.name)}
                           </span>
-                          <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.pct}%)</span>
+                          <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.hours} {t.hoursShort}) ({dept.pct}%)</span>
                         </div>
                         <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
                           <div
