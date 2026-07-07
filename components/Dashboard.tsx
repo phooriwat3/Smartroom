@@ -1714,7 +1714,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-5 text-white flex justify-between items-center">
+            <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-5 text-white flex justify-between items-center rounded-t-2xl">
               <div>
                 <h3 className="font-bold text-lg leading-tight">
                   {language === 'th' ? `ระบุรายละเอียดการจอง` : `Enter Booking Details`}
