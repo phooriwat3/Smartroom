@@ -352,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (state === 'verified') return t.verified;
     if (state === 'roomInUse') return t.roomInUseStatus;
     if (state === 'used') return t.usedRoomStatus;
-    return t.confirmed;
+    return t.waitForVerify;
   };
 
   const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string, context?: 'timeline') => {
@@ -362,10 +362,10 @@ const Dashboard: React.FC<DashboardProps> = ({
     const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department, context ? { context } : undefined) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900 border-sky-200'} animate-pulse`;
     if (departmentBadgeClass) return departmentBadgeClass;
-    if (state === 'waitForVerify') return 'bg-amber-100 text-amber-900 border-amber-200';
+    if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-200';
     if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border-cyan-200';
     if (state === 'used') return 'bg-slate-100 text-slate-600 border-slate-205';
-    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    return 'bg-amber-100 text-amber-900';
   };
 
   // Helper inside All-Room cards stats calculation
@@ -1481,7 +1481,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {title ? title : (language === 'th' ? 'กำลังทำจองชั่วโมงนี้' : 'Selected Selection')}
                             </span>
                             <span className="text-[9px] uppercase font-mono bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
-                              {language === 'th' ? 'เลือกแล้ว (' : 'Selected'}
+                              {language === 'th' ? 'เลือกแล้ว' : 'Selected'}
                             </span>
                           </div>
                         ) : isPast ? (
@@ -1603,7 +1603,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         }}
                         className="w-full py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all flex items-center justify-center"
                       >
-                        {language === 'th' ? 'ยกเลิกการเลือกเวลา (Clear)' : 'Clear Selection'}
+                        {language === 'th' ? 'ยกเลิกการเลือกเวลา' : 'Clear Selection'}
                       </button>
                     </div>
                   ) : singleRoomBookings.length > 0 ? (

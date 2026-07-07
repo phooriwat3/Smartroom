@@ -30,7 +30,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
     if (state === 'verified') return t.verified;
     if (state === 'roomInUse') return t.roomInUseStatus;
     if (state === 'used') return t.usedRoomStatus;
-    return t.confirmed;
+    return t.waitForVerify;
   };
 
   const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string) => {
@@ -39,7 +39,11 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
 
     const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900'} animate-pulse`;
-    return departmentBadgeClass || 'bg-emerald-100 text-emerald-700';
+    if (departmentBadgeClass) return departmentBadgeClass;
+    if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-250';
+    if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border border-cyan-200';
+    if (state === 'used') return 'bg-slate-100 text-slate-600';
+    return 'bg-amber-100 text-amber-900';
   };
 
 
