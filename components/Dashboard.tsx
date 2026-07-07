@@ -26,6 +26,7 @@ import {
 import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState } from '../bookingVisualStyles';
 import CheckInValidationModal from './CheckInValidationModal';
+import ConfirmationModal from './ConfirmationModal';
 
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR, DEPARTMENTS } from '../constants';
 import { functions } from '../firebase';
@@ -152,6 +153,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [selectedHours, setSelectedHours] = useState<number[]>([]);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailConfirmModal, setEmailConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+  });
   const [internalActiveView, setInternalActiveView] = useState<DashboardMainView>('status');
   const dashboardActiveView = activeView || internalActiveView;
   const setDashboardActiveView = (view: DashboardMainView) => {
@@ -577,19 +589,21 @@ const Dashboard: React.FC<DashboardProps> = ({
     const selectedEmail = getMailboxEmail(user);
     if (!selectedEmail) return;
 
-    const confirmMsg = language === 'th'
-      ? `นี่คืออีเมลของคุณใช่หรือไม่?\n${selectedEmail}\n\nกรุณาตรวจสอบให้แน่ใจว่าเป็นอีเมลของคุณเอง`
-      : `Is this your email?\n${selectedEmail}\n\nPlease check and confirm that this is your own email.`;
-
-    if (!window.confirm(confirmMsg)) {
-      return;
-    }
-
-    setSelectedEmailUser(user);
-    setEmail(selectedEmail);
-    setEmailSuggestions([]);
-    setIsEmailSuggestionsOpen(false);
-    setBookingError(null);
+    setEmailConfirmModal({
+      isOpen: true,
+      title: language === 'th' ? 'ยืนยันอีเมลของคุณ' : 'Confirm Your Email',
+      message: language === 'th'
+        ? `นี่คืออีเมลของคุณใช่หรือไม่?\n${selectedEmail}\n\nกรุณาตรวจสอบให้แน่ใจว่าเป็นอีเมลของคุณเอง`
+        : `Is this your email?\n${selectedEmail}\n\nPlease check and confirm that this is your own email.`,
+      onConfirm: () => {
+        setSelectedEmailUser(user);
+        setEmail(selectedEmail);
+        setEmailSuggestions([]);
+        setIsEmailSuggestionsOpen(false);
+        setBookingError(null);
+        setEmailConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const validateExactYageoMailbox = async (normalizedEmail: string) => {
@@ -611,6 +625,62 @@ const Dashboard: React.FC<DashboardProps> = ({
     return data.user && getMailboxEmail(data.user) === normalizedEmail
       ? data.user
       : { ...(data.user || {}), mail: normalizedEmail };
+  };
+
+  const executeSubmitBooking = async (normalizedEmail: string) => {
+    setIsSubmitting(true);
+    try {
+      const sorted = [...selectedHours].sort((a, b) => a - b);
+      const startHour = sorted[0];
+      const endHour = sorted[sorted.length - 1] + 1;
+
+      const startTime = new Date(selectedDateObj);
+      startTime.setHours(startHour, 0, 0, 0);
+
+      const endTime = new Date(selectedDateObj);
+      endTime.setHours(endHour, 0, 0, 0);
+
+      const verifiedEmailUser = await validateExactYageoMailbox(normalizedEmail);
+      setSelectedEmailUser(verifiedEmailUser);
+
+      const bookingData = {
+        roomId: selectedRoom!.id,
+        roomName: selectedRoom!.name,
+        title: title.trim(),
+        organizer: organizer.trim(),
+        department,
+        employeeId: employeeId.trim(),
+        email: normalizedEmail,
+        emailDisplayName: verifiedEmailUser.displayName || '',
+        emailJobTitle: verifiedEmailUser.jobTitle || '',
+        emailDepartment: verifiedEmailUser.department || '',
+        deskNumber: deskNumber.trim(),
+        startTime,
+        endTime,
+        status: BookingStatus.CONFIRMED,
+        createdAt: new Date()
+      };
+
+      const success = await onConfirmBooking!(bookingData);
+      if (success) {
+        setSelectedHours([]);
+        setTitle('');
+        setOrganizer('');
+        setEmployeeId('');
+        setEmail('');
+        setSelectedEmailUser(null);
+        setDepartment('');
+        setDeskNumber('');
+        setIsDetailsModalOpen(false);
+        setBookingError(null);
+      } else {
+        setBookingError('Unable to complete booking. Please check the email, selected times, and room availability.');
+      }
+    } catch (err: any) {
+      setBookingError(err.message || 'Error occurred during booking');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleInlineSubmit = async (e: React.FormEvent) => {
@@ -681,68 +751,17 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     setBookingError(null);
 
-    const confirmEmailMsg = language === 'th'
-      ? `กรุณายืนยันว่านี่คืออีเมลของคุณจริงหรือไม่:\n${normalizedEmail}\n\n(หากไม่ใช่อีเมลของคุณ คุณจะไม่ได้รับอีเมลยืนยันการใช้ห้อง)`
-      : `Please confirm if this is your email address:\n${normalizedEmail}\n\n(If it is not your email, you will not receive the verification link.)`;
-
-    if (!window.confirm(confirmEmailMsg)) {
-      return;
-    }
-
-    setIsSubmitting(true);
-
-    try {
-      const sorted = [...selectedHours].sort((a, b) => a - b);
-      const startHour = sorted[0];
-      const endHour = sorted[sorted.length - 1] + 1;
-
-      const startTime = new Date(selectedDateObj);
-      startTime.setHours(startHour, 0, 0, 0);
-
-      const endTime = new Date(selectedDateObj);
-      endTime.setHours(endHour, 0, 0, 0);
-
-      const verifiedEmailUser = await validateExactYageoMailbox(normalizedEmail);
-      setSelectedEmailUser(verifiedEmailUser);
-
-      const bookingData = {
-        roomId: selectedRoom.id,
-        roomName: selectedRoom.name,
-        title: title.trim(),
-        organizer: organizer.trim(),
-        department,
-        employeeId: employeeId.trim(),
-        email: normalizedEmail,
-        emailDisplayName: verifiedEmailUser.displayName || '',
-        emailJobTitle: verifiedEmailUser.jobTitle || '',
-        emailDepartment: verifiedEmailUser.department || '',
-        deskNumber: deskNumber.trim(),
-        startTime,
-        endTime,
-        status: BookingStatus.CONFIRMED,
-        createdAt: new Date()
-      };
-
-      const success = await onConfirmBooking(bookingData);
-      if (success) {
-        setSelectedHours([]);
-        setTitle('');
-        setOrganizer('');
-        setEmployeeId('');
-        setEmail('');
-        setSelectedEmailUser(null);
-        setDepartment('');
-        setDeskNumber('');
-        setIsDetailsModalOpen(false);
-        setBookingError(null);
-      } else {
-        setBookingError('Unable to complete booking. Please check the email, selected times, and room availability.');
+    setEmailConfirmModal({
+      isOpen: true,
+      title: language === 'th' ? 'ยืนยันอีเมลของคุณ' : 'Verify Booker Email',
+      message: language === 'th'
+        ? `กรุณายืนยันว่านี่คืออีเมลของคุณจริงหรือไม่:\n${normalizedEmail}\n\n(หากไม่ใช่อีเมลของคุณ คุณจะไม่ได้รับอีเมลยืนยันการใช้ห้อง)`
+        : `Please confirm if this is your email address:\n${normalizedEmail}\n\n(If it is not your email, you will not receive the verification link.)`,
+      onConfirm: () => {
+        setEmailConfirmModal(prev => ({ ...prev, isOpen: false }));
+        void executeSubmitBooking(normalizedEmail);
       }
-    } catch (err: any) {
-      setBookingError(err.message || 'Error occurred during booking');
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   const handleReleaseAllBookings = async () => {
@@ -1964,6 +1983,17 @@ const Dashboard: React.FC<DashboardProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {emailConfirmModal.isOpen && (
+        <ConfirmationModal
+          isOpen={emailConfirmModal.isOpen}
+          title={emailConfirmModal.title}
+          message={emailConfirmModal.message}
+          confirmText={language === 'th' ? 'ใช่, ถูกต้อง' : 'Yes, correct'}
+          cancelText={language === 'th' ? 'ไม่ใช่, ตรวจสอบอีกครั้ง' : 'No, let me check'}
+          onConfirm={emailConfirmModal.onConfirm}
+          onCancel={() => setEmailConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        />
       )}
     </div>
   );
