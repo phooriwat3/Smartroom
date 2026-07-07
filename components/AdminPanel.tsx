@@ -969,7 +969,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (state === 'used') return t.usedRoomStatus;
     if (state === 'rejected') return t.rejected;
     if (state === 'noCheckIn') return t.cancelledNoVerification;
-    return t.confirmed;
+    return t.waitForVerify;
   };
 
   const getAdminBookingStatusClass = (state: AdminBookingDisplayState, department?: string) => {
