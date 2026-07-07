@@ -577,6 +577,14 @@ const Dashboard: React.FC<DashboardProps> = ({
     const selectedEmail = getMailboxEmail(user);
     if (!selectedEmail) return;
 
+    const confirmMsg = language === 'th'
+      ? `นี่คืออีเมลของคุณใช่หรือไม่?\n${selectedEmail}\n\nกรุณาตรวจสอบให้แน่ใจว่าเป็นอีเมลของคุณเอง`
+      : `Is this your email?\n${selectedEmail}\n\nPlease check and confirm that this is your own email.`;
+
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
     setSelectedEmailUser(user);
     setEmail(selectedEmail);
     setEmailSuggestions([]);
@@ -672,6 +680,15 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     setBookingError(null);
+
+    const confirmEmailMsg = language === 'th'
+      ? `กรุณายืนยันว่านี่คืออีเมลของคุณจริงหรือไม่:\n${normalizedEmail}\n\n(หากไม่ใช่อีเมลของคุณ คุณจะไม่ได้รับอีเมลยืนยันการใช้ห้อง)`
+      : `Please confirm if this is your email address:\n${normalizedEmail}\n\n(If it is not your email, you will not receive the verification link.)`;
+
+    if (!window.confirm(confirmEmailMsg)) {
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -1777,6 +1794,39 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t.department} <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-semibold text-slate-800"
+                  >
+                    <option value="">-- {t.selectDept} --</option>
+                    {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {language === 'th' ? 'เบอร์โต๊ะ (ตัวเลข 4 หลัก)' : 'Desk Number (4 digits)'} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    value={deskNumber}
+                    onChange={(e) => setDeskNumber(e.target.value.replace(/\D/g, ''))}
+                    placeholder="1234"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
+                  />
+                </div>
+              </div>
+
               <div className="relative">
                 <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
                   {language === 'th' ? 'อีเมล YAGEO' : 'YAGEO Email'} <span className="text-rose-500">*</span>
@@ -1879,39 +1929,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                     )}
                   </div>
                 )}
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t.department} <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-semibold text-slate-800"
-                  >
-                    <option value="">-- {t.selectDept} --</option>
-                    {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {language === 'th' ? 'เบอร์โต๊ะ (ตัวเลข 4 หลัก)' : 'Desk Number (4 digits)'} <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={4}
-                    value={deskNumber}
-                    onChange={(e) => setDeskNumber(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1234"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
-                  />
-                </div>
               </div>
 
               {/* Error feedback */}
