@@ -155,7 +155,7 @@ interface AdminPanelProps {
   onVerifyBooking?: (id: string) => void;
 }
 
-type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected';
+type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected' | 'noCheckIn';
 
 
 const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -180,6 +180,15 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onLoginSuccess
 }) => {
   const t = TRANSLATIONS[language];
+
+  // Periodic Clock state to refresh time-dependent displays in real-time
+  const [liveTime, setLiveTime] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLiveTime(new Date());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Auth State
   const [localCurrentUser, setLocalCurrentUser] = useState<AdminUser | null>(null);
@@ -930,7 +939,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (booking.status === BookingStatus.REJECTED || !booking.status) return 'rejected';
     if (booking.actualEndTime) return 'used';
 
-    const now = new Date().getTime();
+    const now = liveTime.getTime();
     const startTime = booking.startTime.getTime();
     const endTime = booking.endTime.getTime();
     const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
@@ -941,7 +950,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       return 'verified';
     }
 
-    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
+    if (booking.status === BookingStatus.CONFIRMED) {
+      const verifyCutoffTime = startTime + 15 * 60 * 1000;
+      const verifyStartTime = startTime - 15 * 60 * 1000;
+      if (now >= verifyStartTime && now <= verifyCutoffTime) return 'waitForVerify';
+      if (now > verifyCutoffTime) return 'noCheckIn';
+      return 'confirmed';
+    }
     return 'confirmed';
   };
 
@@ -953,12 +968,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (state === 'roomInUse') return t.roomInUseStatus;
     if (state === 'used') return t.usedRoomStatus;
     if (state === 'rejected') return t.rejected;
+    if (state === 'noCheckIn') return t.cancelledNoVerification;
     return t.confirmed;
   };
 
   const getAdminBookingStatusClass = (state: AdminBookingDisplayState, department?: string) => {
     if (state === 'pending') return 'bg-orange-100 text-orange-700';
     if (state === 'rejected') return 'bg-red-100 text-red-700';
+    if (state === 'noCheckIn') return 'bg-rose-100 text-rose-805 ring-1 ring-rose-200';
 
     const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'} animate-pulse`;

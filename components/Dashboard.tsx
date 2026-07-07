@@ -162,7 +162,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
   const [internalActiveView, setInternalActiveView] = useState<DashboardMainView>('status');
   const dashboardActiveView = activeView || internalActiveView;
@@ -1481,7 +1481,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {title ? title : (language === 'th' ? 'กำลังทำจองชั่วโมงนี้' : 'Selected Selection')}
                             </span>
                             <span className="text-[9px] uppercase font-mono bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
-                              {language === 'th' ? 'เลือกแล้ว (จอง)' : 'Selected'}
+                              {language === 'th' ? 'เลือกแล้ว (' : 'Selected'}
                             </span>
                           </div>
                         ) : isPast ? (

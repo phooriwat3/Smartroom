@@ -347,7 +347,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                             </span>
                                         ) : isSelected ? (
                                             <span className="text-white font-bold truncate">
-                                                {booking ? translateText(booking.title, language) : (language === 'th' ? 'เลือกแล้ว (จอง)' : 'Selected')}
+                                                {booking ? translateText(booking.title, language) : (language === 'th' ? 'เลือกแล้ว' : 'Selected')}
                                             </span>
                                         ) : booking ? (
                                             <span className="font-bold truncate flex items-center text-inherit">
