@@ -244,6 +244,7 @@ const SmartRoomApplication: React.FC = () => {
   }, [language]);
 
   const t = TRANSLATIONS[language];
+  const [dashboardActiveView, setDashboardActiveView] = useState<'status' | 'timeline'>('status');
 
   // --- DATABASE STATE (Real-time Firestore) ---
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -1500,6 +1501,7 @@ const SmartRoomApplication: React.FC = () => {
           <div
             onClick={() => {
               navigateToView('dashboard');
+              setDashboardActiveView('status');
               setSelectedRoomId('ALL');
               setFilterType('All');
               setIsMobileDrawerOpen(false);
@@ -1536,6 +1538,7 @@ const SmartRoomApplication: React.FC = () => {
                 <button
                   onClick={() => {
                     navigateToView('dashboard');
+                    setDashboardActiveView('status');
                     setSelectedRoomId('ALL');
                     setIsMobileDrawerOpen(false);
                   }}
@@ -1674,6 +1677,8 @@ const SmartRoomApplication: React.FC = () => {
               onConfirmBooking={handleConfirmBooking}
               selectedRoomId={selectedRoomId}
               setSelectedRoomId={setSelectedRoomId}
+              activeView={dashboardActiveView}
+              onActiveViewChange={setDashboardActiveView}
             />
           )
         )}
