@@ -1,4 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 -3 116 76">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-10 -5 130 85">
+  <!-- White background box with rounded corners -->
+  <rect x="-10" y="-5" width="130" height="85" rx="18" fill="#ffffff" />
+  
+  <!-- Orange Logo pieces inside -->
   <!-- Left/Top piece -->
   <path d="M 25 10 h 50 l -10 10 H 35 l -10 10 h 30 l -10 10 H 30 l -10 10 H 10 l 10 -10 H 5 l 20 -20 H 15 l 10 -10 Z" 
         fill="#e5673e" stroke="#e5673e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
