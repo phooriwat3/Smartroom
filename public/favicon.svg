@@ -1,3 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <path d="M12 12h40v10H37v30H27V22H12Z" fill="#e5673e"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Left/Top piece -->
+  <path d="M 30 20 h 47.2 l -14.8 14.8 H 41 l -10 10 h 25.4 l -10 10 H 20 l 20 -20 Z" fill="#e5673e"/>
+  <!-- Right piece -->
+  <path d="M 81.2 20 h 13.8 l -15 15 H 65.2 Z" fill="#e5673e"/>
+  <!-- Bottom piece -->
+  <path d="M 55 55 h 10 l -15 15 H 40 Z" fill="#e5673e"/>
 </svg>
