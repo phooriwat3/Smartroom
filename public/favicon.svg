@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 130 95">
-  <!-- Left/Top piece (Self-contained, non-intersecting polygon) -->
-  <path d="M 50 25 h 35 l -10 10 H 60 l -10 10 h 15 l -10 10 H 20 l 30 -30 Z" fill="#e5673e"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 70">
+  <!-- Left/Top piece -->
+  <path d="M 25 10 h 50 l -10 10 H 35 l -10 10 h 30 l -10 10 H 30 l -10 10 H 10 l 10 -10 H 5 l 20 -20 H 15 l 10 -10 Z" fill="#e5673e"/>
   <!-- Right piece -->
-  <path d="M 90 25 h 20 l -10 10 H 80 Z" fill="#e5673e"/>
+  <path d="M 80 10 h 20 l -10 10 H 70 Z" fill="#e5673e"/>
   <!-- Bottom piece -->
-  <path d="M 60 60 h 20 l -10 10 H 50 Z" fill="#e5673e"/>
+  <path d="M 50 45 h 10 l -15 15 H 35 Z" fill="#e5673e"/>
 </svg>
