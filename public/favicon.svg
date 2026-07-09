@@ -1,8 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 70">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-3 -3 116 76">
   <!-- Left/Top piece -->
-  <path d="M 25 10 h 50 l -10 10 H 35 l -10 10 h 30 l -10 10 H 30 l -10 10 H 10 l 10 -10 H 5 l 20 -20 H 15 l 10 -10 Z" fill="#e5673e"/>
+  <path d="M 25 10 h 50 l -10 10 H 35 l -10 10 h 30 l -10 10 H 30 l -10 10 H 10 l 10 -10 H 5 l 20 -20 H 15 l 10 -10 Z" 
+        fill="#e5673e" stroke="#e5673e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
   <!-- Right piece -->
-  <path d="M 80 10 h 20 l -10 10 H 70 Z" fill="#e5673e"/>
+  <path d="M 82 10 h 18 l -10 10 H 72 Z" 
+        fill="#e5673e" stroke="#e5673e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
   <!-- Bottom piece -->
-  <path d="M 50 45 h 10 l -15 15 H 35 Z" fill="#e5673e"/>
+  <path d="M 52 46 h 8 l -15 15 H 35 Z" 
+        fill="#e5673e" stroke="#e5673e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
 </svg>
