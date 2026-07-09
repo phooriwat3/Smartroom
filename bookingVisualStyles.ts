@@ -70,7 +70,6 @@ export const getDepartmentBookingStyle = (
 ): DepartmentBookingStyle => {
   const styleKey = getDepartmentBookingStyleKey(department);
   if (styleKey === 'it') return DEPARTMENT_STYLES.it;
-  if (options.context === 'timeline') return DEPARTMENT_STYLES[styleKey] || DEFAULT_STYLE;
   return DEFAULT_STYLE;
 };
 export const getBookingDepartmentClass = (department?: string | null, options?: DepartmentBookingStyleOptions) => getDepartmentBookingStyle(department, options).itemClass;
