@@ -105,6 +105,7 @@ export const TRANSLATE_MAP: Record<string, string> = {
   'TA MFG': 'ฝ่ายผลิตหลัก',
   'SC': 'ห่วงโซ่อุปทาน',
   'IT': 'เทคโนโลยีสารสนเทศ',
+  'TE': 'ฝ่ายผลิต TE',
 
   // Closure Reasons
   'Renovation': 'ปิดปรับปรุงชั่วคราว',
@@ -132,7 +133,8 @@ const DEPARTMENT_CANONICAL_CODES: Record<string, string> = {
   Facilities: 'FAC',
   QA: 'QA',
   'TA MFG': 'TA MFG',
-  SC: 'SC'
+  SC: 'SC',
+  TE: 'TE'
 };
 
 const DEPARTMENT_ALIAS_CODES: Record<string, string> = {
@@ -145,6 +147,9 @@ const DEPARTMENT_ALIAS_CODES: Record<string, string> = {
   'quality assurance': 'QA',
   manufacturing: 'TA MFG',
   'supply chain': 'SC',
+  te: 'TE',
+  'te mfg': 'TE',
+  'ฝ่ายผลิต te': 'TE',
   '\u0E01\u0E23\u0E23\u0E21\u0E01\u0E32\u0E23\u0E1C\u0E08\u0E14\u0E01\u0E32\u0E23': 'MD',
   '\u0E40\u0E17\u0E04\u0E42\u0E19\u0E42\u0E25\u0E22\u0E2A\u0E32\u0E23\u0E2A\u0E19\u0E40\u0E17\u0E28': 'IT'
 };

@@ -1571,7 +1571,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     ) : (
                       <p className="text-[11px] font-semibold mt-1">
                         {language === 'th'
-                          ? 'กรุณาคลิกเลือกช่วงเวลาต้องการจองบนตารางเวลา (ฝั่งซ้าย)'
+                          ? 'กรุณาคลิกเลือกช่วงเวลาต้องการจองบนตารางเวลา'
                           : 'Please click to select your desired hours on the left timeline'}
                       </p>
                     )}
@@ -1603,7 +1603,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         }}
                         className="w-full py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all flex items-center justify-center"
                       >
-                        {language === 'th' ? 'ยกเลิกการเลือกเวลา' : 'Clear Selection'}
+                        {language === 'th' ? 'ยกเลิการเลือก' : 'Clear Selection'}
                       </button>
                     </div>
                   ) : singleRoomBookings.length > 0 ? (
@@ -1614,7 +1614,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   ) : (
                     <div className="p-3 bg-slate-50 border border-slate-200 text-slate-500 text-center rounded-xl text-xs font-bold leading-relaxed">
                       {language === 'th'
-                        ? '👉 กรุณาคลิกเลือกเวลาก่อนเริ่มทำการจอง (จากตารางฝั่งซ้าย)'
+                        ? '👉 กรุณาคลิกเลือกเวลาก่อนเริ่มทำการจอง'
                         : '👉 Click hour blocks on the left timeline to start booking'}
                     </div>
                   )}
@@ -1688,7 +1688,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <AlertCircle className="w-4 h-4 mr-2 text-rose-500 flex-shrink-0 mt-0.5 animate-pulse" />
                 <span>
                   {language === 'th'
-                    ? '💡 หากต้องการยกเลิกหรือเเก้ไขการจอง กรุณาติดต่อเบอร์ 9'
+                    ? '💡 หากต้องการยกเลิกหรือเเก้ไขการจอง กรุณาติดต่อหมายเลข 9'
                     : '💡 To cancel or edit a booking, please call Information at extension 9.'}
                 </span>
               </div>
