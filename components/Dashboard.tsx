@@ -698,7 +698,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     if (!title.trim()) {
-      setBookingError(language === 'th' ? 'กรุณากรอกหัวข้อการประชุม' : 'Please fill in the meeting title.');
+      setBookingError(language === 'th' ? 'กรุณากรอกหัวข้อการประชุม' : 'Please fill in the purpose.');
       return;
     }
 
@@ -1389,7 +1389,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </h3>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-emerald-50 border border-emerald-300 rounded mr-1"></div> {t.free}</div>
-                <div className="flex items-center"><div className="w-3.5 h-3.5 bg-brand-500 border border-brand-600 rounded mr-1"></div> {language === 'th' ? 'เลือกกำลังจอง' : 'Selected (To Book)'}</div>
+                <div className="flex items-center"><div className="w-3.5 h-3.5 bg-brand-500 border border-brand-600 rounded mr-1"></div> {language === 'th' ? 'เลือกเเล้ว' : 'Selected (To Book)'}</div>
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-gradient-to-r from-orange-300 to-yellow-200 border border-orange-400 rounded mr-1"></div> {t.booked}</div>
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-slate-100 border border-slate-205 rounded mr-1"></div> {language === 'th' ? 'หมดเวลาจอง' : 'Passed'}</div>
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-slate-100 border border-slate-300 rounded mr-1"></div> {temporarilyDisabledLabel}</div>
@@ -1688,8 +1688,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <AlertCircle className="w-4 h-4 mr-2 text-rose-500 flex-shrink-0 mt-0.5 animate-pulse" />
                 <span>
                   {language === 'th'
-                    ? '💡 หากต้องการยกเลิกหรือลดชั่วโมงการจอง กรุณาติดต่อผู้ดูแลระบบ (Admin)'
-                    : '💡 To cancel or reduce booking hours, please contact the Administrator (Admin)'}
+                    ? '💡 หากต้องการยกเลิกหรือเเก้ไขการจอง กรุณาติดต่อเบอร์ 9'
+                    : '💡 To cancel or edit a booking, please call Information at extension 9.'}
                 </span>
               </div>
             </div>
@@ -1754,33 +1754,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </label>
                 <input
                   type="text"
-                  list="meeting-titles-list"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder={language === 'th' ? 'ประชุมแผนงาน' : 'Strategy Planning'}
+                  placeholder={language === 'th' ? 'ประชุม' : 'Meeting'}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                 />
-                <datalist id="meeting-titles-list">
-                  {language === 'th' ? (
-                    <>
-                      <option value="Meeting" />
-                      <option value="Yield Meeting" />
-                      <option value="อบรมส่งเสริมสุขภาพใจ" />
-                      <option value="อบรม" />
-                      <option value="อบรมช่างเทคนิค" />
-                      <option value="Training" />
-                    </>
-                  ) : (
-                    <>
-                      <option value="Meeting" />
-                      <option value="Yield Meeting" />
-                      <option value="Mental Health Training" />
-                      <option value="Training" />
-                      <option value="Technician Training" />
-                    </>
-                  )}
-                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1807,7 +1786,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     maxLength={7}
                     value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1234567"
+                    placeholder="2606801"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                   />
                 </div>
@@ -1832,7 +1811,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {language === 'th' ? 'เบอร์โต๊ะ (ตัวเลข 4 หลัก)' : 'Desk Number (4 digits)'} <span className="text-rose-500">*</span>
+                    {language === 'th' ? 'เบอร์โต๊ะ' : 'Desk Number'} <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -1840,7 +1819,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     maxLength={4}
                     value={deskNumber}
                     onChange={(e) => setDeskNumber(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1234"
+                    placeholder="2516"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                   />
                 </div>

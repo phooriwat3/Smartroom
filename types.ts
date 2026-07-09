@@ -86,7 +86,7 @@ export interface Booking {
   verifyUrl?: string;
 }
 
-export type EmailSentStatus = 'successful' | 'failed';
+export type EmailSentStatus = 'successful' | 'failed' | 'queued';
 
 export interface EmailSentHistoryRecord {
   id: string;

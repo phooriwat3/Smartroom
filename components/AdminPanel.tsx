@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
+import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord, EmailSentStatus } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
@@ -156,6 +156,30 @@ interface AdminPanelProps {
 }
 
 type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected' | 'noCheckIn';
+type EmailHistoryVerificationStatus = 'pendingSend' | 'waitForVerify' | 'notVerified' | 'verified' | 'na';
+
+const STATUS_LABEL_FALLBACKS = {
+  en: {
+    emailStatusSuccessful: 'Successful',
+    emailStatusFailed: 'Failed',
+    emailStatusQueued: 'Waiting to send',
+    verifiedYes: 'Verified',
+    verifiedNo: 'Not verified',
+    verifiedWait: 'Wait for Verify',
+    verifiedPendingSend: 'Waiting to send',
+    verifiedNA: '-'
+  },
+  th: {
+    emailStatusSuccessful: 'ส่งสำเร็จ',
+    emailStatusFailed: 'ส่งไม่สำเร็จ',
+    emailStatusQueued: 'รอส่ง',
+    verifiedYes: 'ยืนยันแล้ว',
+    verifiedNo: 'ไม่ยืนยัน',
+    verifiedWait: 'รอผู้ใช้งานยืนยัน',
+    verifiedPendingSend: 'รอส่ง',
+    verifiedNA: '-'
+  }
+} as const;
 
 
 const AdminPanel: React.FC<AdminPanelProps> = ({
@@ -180,6 +204,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onLoginSuccess
 }) => {
   const t = TRANSLATIONS[language];
+  const statusLabelFallback = STATUS_LABEL_FALLBACKS[language];
+  const getStatusLabel = (key: keyof typeof STATUS_LABEL_FALLBACKS.en) => t[key] || statusLabelFallback[key];
+  const getEmailSentStatusLabel = (status: EmailSentStatus) => {
+    if (status === 'queued') return getStatusLabel('emailStatusQueued');
+    if (status === 'successful') return getStatusLabel('emailStatusSuccessful');
+    return getStatusLabel('emailStatusFailed');
+  };
+  const getEmailHistoryVerificationStatusLabel = (status: EmailHistoryVerificationStatus) => {
+    if (status === 'verified') return getStatusLabel('verifiedYes');
+    if (status === 'pendingSend') return getStatusLabel('verifiedPendingSend');
+    if (status === 'waitForVerify') return getStatusLabel('verifiedWait');
+    if (status === 'notVerified') return getStatusLabel('verifiedNo');
+    return getStatusLabel('verifiedNA');
+  };
 
   // Periodic Clock state to refresh time-dependent displays in real-time
   const [liveTime, setLiveTime] = useState(() => new Date());
@@ -822,6 +860,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return Array.from(years).sort((a, b) => b - a);
   }, [bookings]);
 
+  const combinedEmailHistory = useMemo(() => {
+    const list = [...emailHistory];
+
+    bookings.forEach((booking) => {
+      const isScheduledForSend = booking.status === BookingStatus.CONFIRMED && (
+        booking.verificationEmailStatus === 'queued' ||
+        booking.verificationEmailStatus === 'pending_retry' ||
+        booking.verificationEmailStatus === 'sending'
+      );
+
+      if (!isScheduledForSend) return;
+
+      const alreadySent = emailHistory.some(
+        (history) => history.relatedBookingId === booking.id && history.status === 'successful'
+      );
+      const alreadyListed = list.some(
+        (history) => history.relatedBookingId === booking.id && history.status === 'queued'
+      );
+
+      if (alreadySent || alreadyListed) return;
+
+      const scheduledDate = booking.verificationEmailScheduledAt || booking.startTime;
+      list.push({
+        id: `queued-${booking.id}`,
+        recipientEmail: booking.email || '',
+        recipientName: booking.organizer || '',
+        subject: `[TOKIN Smart Room] Please Verify Your Booking: ${booking.title}`,
+        purpose: 'Booking Verification',
+        sentAt: scheduledDate ? new Date(scheduledDate) : new Date(),
+        status: 'queued',
+        relatedBookingId: booking.id,
+        relatedBookingTitle: booking.title,
+        relatedRoomId: booking.roomId,
+        relatedRoomName: getRoomName(booking.roomId),
+      });
+    });
+
+    return list.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+  }, [emailHistory, bookings, rooms]);
+
   const bookingMatchesHistoryDateFilter = (booking: Booking) => {
     const bookingDate = booking.startTime;
     if (!bookingDate) return false;
@@ -1012,6 +1090,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return `${formatDate(value, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} ${time}`;
   };
 
+  const getEmailHistoryVerificationStatus = (record: EmailSentHistoryRecord, booking?: Booking): EmailHistoryVerificationStatus => {
+    if (record.status === 'queued') return 'pendingSend';
+    if (!booking) return 'na';
+
+    const isVerified = booking.status === BookingStatus.VERIFIED || !!booking.verifiedAt || !!booking.actualStartTime;
+    if (isVerified) return 'verified';
+
+    if (record.status !== 'successful') return 'na';
+
+    const cutoffTime = booking.verificationWindowClosedAt
+      ? new Date(booking.verificationWindowClosedAt).getTime()
+      : new Date(booking.startTime).getTime() + 15 * 60 * 1000;
+
+    return liveTime.getTime() <= cutoffTime && booking.status === BookingStatus.CONFIRMED
+      ? 'waitForVerify'
+      : 'notVerified';
+  };
+
   const normalizeEmailHistoryRecord = (raw: any): EmailSentHistoryRecord => ({
     id: String(raw?.id || Math.random().toString(36).slice(2)),
     recipientEmail: String(raw?.recipientEmail || ''),
@@ -1019,7 +1115,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     subject: String(raw?.subject || ''),
     purpose: String(raw?.purpose || ''),
     sentAt: parseHistoryDate(raw?.sentAt || raw?.createdAt),
-    status: raw?.status === 'failed' ? 'failed' : 'successful',
+    status: raw?.status === 'failed' ? 'failed' : raw?.status === 'queued' ? 'queued' : 'successful',
     relatedBookingId: String(raw?.relatedBookingId || ''),
     relatedBookingTitle: String(raw?.relatedBookingTitle || ''),
     relatedRoomId: String(raw?.relatedRoomId || ''),
@@ -1820,20 +1916,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {isEmailHistoryLoading && emailHistory.length === 0 ? (
+                {isEmailHistoryLoading && combinedEmailHistory.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                       {t.loadingEmailHistory}...
                     </td>
                   </tr>
-                ) : emailHistory.length === 0 ? (
+                ) : combinedEmailHistory.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">
                       {t.noEmailHistory}
                     </td>
                   </tr>
                 ) : (
-                  emailHistory.map((record) => {
+                  combinedEmailHistory.map((record) => {
+                    const isQueuedStatus = record.status === 'queued';
                     const relatedBooking = record.relatedBookingTitle || record.relatedBookingId;
                     const relatedRoom = record.relatedRoomName || (record.relatedRoomId ? getRoomName(record.relatedRoomId) : '');
                     const purpose = record.purpose === 'Booking Verification'
@@ -1841,10 +1938,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       : translateText(record.purpose, language);
                     
                     const booking = bookings.find(b => b.id === record.relatedBookingId);
-                    let verifiedStatus = 'na';
-                    if (booking) {
-                      verifiedStatus = (booking.status === 'VERIFIED' || booking.verifiedAt) ? 'yes' : 'no';
-                    }
+                    const verifiedStatus = getEmailHistoryVerificationStatus(record, booking);
 
                     return (
                       <tr key={record.id} className="hover:bg-slate-50 transition-colors align-top">
@@ -1885,26 +1979,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           {formatEmailSentAt(record.sentAt)}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${record.status === 'successful'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-rose-100 text-rose-700'
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                              isQueuedStatus
+                                ? 'bg-amber-100 text-amber-700'
+                                : record.status === 'successful'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-rose-100 text-rose-700'
                             }`}>
-                            {record.status === 'successful' ? t.emailStatusSuccessful : t.emailStatusFailed}
+                            {getEmailSentStatusLabel(record.status)}
                           </span>
                         </td>
                         <td className="px-6 py-4">
-                          {verifiedStatus === 'yes' ? (
+                          {verifiedStatus === 'verified' ? (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
                               <Check className="w-3.5 h-3.5 mr-1" />
-                              {t.verifiedYes}
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
                             </span>
-                          ) : verifiedStatus === 'no' ? (
+                          ) : verifiedStatus === 'pendingSend' ? (
                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">
-                              <AlertCircle className="w-3.5 h-3.5 mr-1" />
-                              {t.verifiedNo}
+                              <Clock className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
+                            </span>
+                          ) : verifiedStatus === 'waitForVerify' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                              <Clock className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
+                            </span>
+                          ) : verifiedStatus === 'notVerified' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              <XCircle className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
                             </span>
                           ) : (
-                            <span className="text-slate-400 font-semibold">{t.verifiedNA}</span>
+                            <span className="text-slate-400 font-semibold">{getEmailHistoryVerificationStatusLabel(verifiedStatus)}</span>
                           )}
                         </td>
                       </tr>

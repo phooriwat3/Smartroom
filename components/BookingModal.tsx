@@ -423,32 +423,11 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                             <input
                                 required
                                 type="text"
-                                list="meeting-titles-list-modal"
                                 value={title}
                                 onChange={(e) => setTitle(e.target.value)}
                                 className="w-full px-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                                placeholder={language === 'th' ? "ประชุมแผนงาน" : "Strategy Planning"}
+                                placeholder={language === 'th' ? "ประชุม" : "Meeting"}
                             />
-                            <datalist id="meeting-titles-list-modal">
-                                {language === 'th' ? (
-                                    <>
-                                        <option value="Meeting" />
-                                        <option value="Yield Meeting" />
-                                        <option value="อบรมส่งเสริมสุขภาพใจ" />
-                                        <option value="อบรม" />
-                                        <option value="อบรมช่างเทคนิค" />
-                                        <option value="Training" />
-                                    </>
-                                ) : (
-                                    <>
-                                        <option value="Meeting" />
-                                        <option value="Yield Meeting" />
-                                        <option value="Mental Health Training" />
-                                        <option value="Training" />
-                                        <option value="Technician Training" />
-                                    </>
-                                )}
-                            </datalist>
                         </div>
 
                         <div className="space-y-5">
@@ -496,7 +475,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                         value={employeeId}
                                         onChange={(e) => setEmployeeId(e.target.value.replace(/\D/g, ''))}
                                         className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
-                                        placeholder="1234567"
+                                        placeholder="2606801"
                                     />
                                 </div>
                             </div>
@@ -515,7 +494,7 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                     value={deskNumber}
                                     onChange={(e) => setDeskNumber(e.target.value.replace(/\D/g, ''))}
                                     className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
-                                    placeholder={language === 'th' ? "เช่น 1234" : "e.g. 1234"}
+                                    placeholder={language === 'th' ? "เช่น 2516" : "e.g. 2516"}
                                 />
                             </div>
                         </div>

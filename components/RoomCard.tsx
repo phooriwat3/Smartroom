@@ -139,21 +139,21 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
               {todaysBookings.slice(0, 2).map(booking => {
                 const displayState = getBookingDisplayState(booking);
                 return (
-                <div key={booking.id} className={`flex justify-between items-center gap-2 text-sm rounded-lg px-2 py-1 border ${getBookingDepartmentClassForState(displayState, booking.department)}`}>
-                  <div className="flex items-center truncate min-w-0">
-                    <span className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${getBookingDepartmentDotClass(booking.department)}`}></span>
-                    <span className="font-medium truncate text-inherit">{translateText(booking.title, language)}</span>
-                    <span
-                      title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
-                      className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-bold whitespace-nowrap ${getBookingStatusBadgeClass(displayState, booking.department)}`}
-                    >
-                      {getBookingDisplayLabel(booking)}
+                  <div key={booking.id} className={`flex justify-between items-center gap-2 text-sm rounded-lg px-2 py-1 border ${getBookingDepartmentClassForState(displayState, booking.department)}`}>
+                    <div className="flex items-center truncate min-w-0">
+                      <span className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${getBookingDepartmentDotClass(booking.department)}`}></span>
+                      <span className="font-medium truncate text-inherit">{translateText(booking.title, language)}</span>
+                      <span
+                        title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
+                        className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-bold whitespace-nowrap ${getBookingStatusBadgeClass(displayState, booking.department)}`}
+                      >
+                        {getBookingDisplayLabel(booking)}
+                      </span>
+                    </div>
+                    <span className="text-slate-500 text-xs flex-shrink-0">
+                      {formatTimeString(getHHMM(booking.startTime), language)}
                     </span>
                   </div>
-                  <span className="text-slate-500 text-xs flex-shrink-0">
-                    {formatTimeString(getHHMM(booking.startTime), language)}
-                  </span>
-                </div>
                 );
               })}
               {todaysBookings.length > 2 && <p className="text-xs text-slate-400">+{todaysBookings.length - 2} {t.more}</p>}

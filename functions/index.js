@@ -22,6 +22,8 @@ const DEFAULT_YAGEO_EMAIL_DOMAIN = "yageo.com";
 const TOKEN_BYTES = 32;
 const TOKEN_TTL_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const EMAIL_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
+const EMAIL_HISTORY_RETENTION_DAYS = 30;
+const EMAIL_HISTORY_CLEANUP_BATCH_SIZE = 500;
 const CHECK_IN_WINDOW_BEFORE_MS = 15 * 60 * 1000;
 const CHECK_IN_WINDOW_AFTER_MS = 15 * 60 * 1000;
 const POWER_AUTOMATE_VERIFICATION_FLOW_URL = defineSecret("POWER_AUTOMATE_VERIFICATION_FLOW_URL");
@@ -652,6 +654,7 @@ async function getRoomName(roomId) {
 
 async function recordEmailSentHistory(history) {
   const historyRef = db.collection("emailSentHistory").doc();
+  await cleanupExpiredEmailSentHistory();
   await historyRef.set({
     id: historyRef.id,
     recipientEmail: history.recipientEmail || "",
@@ -691,6 +694,39 @@ function serializeEmailHistoryRecord(snap) {
   };
 }
 
+function getEmailHistoryRetentionCutoff() {
+  return new Date(Date.now() - EMAIL_HISTORY_RETENTION_DAYS * 24 * 60 * 60 * 1000);
+}
+
+async function deleteEmailHistoryOlderThan(fieldName, cutoff) {
+  let deletedCount = 0;
+
+  while (true) {
+    const snap = await db
+      .collection("emailSentHistory")
+      .where(fieldName, "<", cutoff)
+      .limit(EMAIL_HISTORY_CLEANUP_BATCH_SIZE)
+      .get();
+
+    if (snap.empty) break;
+
+    const batch = db.batch();
+    snap.docs.forEach((docSnap) => batch.delete(docSnap.ref));
+    await batch.commit();
+    deletedCount += snap.size;
+
+    if (snap.size < EMAIL_HISTORY_CLEANUP_BATCH_SIZE) break;
+  }
+
+  return deletedCount;
+}
+
+async function cleanupExpiredEmailSentHistory() {
+  const cutoff = getEmailHistoryRetentionCutoff();
+  const sentAtDeleted = await deleteEmailHistoryOlderThan("sentAt", cutoff);
+  const createdAtDeleted = await deleteEmailHistoryOlderThan("createdAt", cutoff);
+  return sentAtDeleted + createdAtDeleted;
+}
 async function dispatchVerificationEmailForBooking(bookingId, booking) {
   if (!booking || typeof booking !== "object") {
     throw new HttpsError("invalid-argument", "booking is required.");
@@ -1736,16 +1772,31 @@ exports.processVerificationEmailQueue = onSchedule({
   }
 });
 
+exports.cleanupEmailSentHistory = onSchedule({
+  schedule: "30 3 * * *",
+  timeZone: "Asia/Bangkok",
+  region: "us-central1",
+}, async () => {
+  const deletedCount = await cleanupExpiredEmailSentHistory();
+  console.log("cleanupEmailSentHistory completed", {
+    retentionDays: EMAIL_HISTORY_RETENTION_DAYS,
+    deletedCount,
+  });
+});
 exports.listEmailSentHistory = onCall(APP_HTTPS_OPTIONS, async (request) => {
   try {
     const data = request.data || {};
     await assertAdminAccess(request, data);
 
+    await cleanupExpiredEmailSentHistory();
+
     const limit = Number.isInteger(data.limit) && data.limit > 0 && data.limit <= 500
       ? data.limit
       : 200;
+    const retentionCutoff = getEmailHistoryRetentionCutoff();
     const snap = await db
       .collection("emailSentHistory")
+      .where("sentAt", ">=", retentionCutoff)
       .orderBy("sentAt", "desc")
       .limit(limit)
       .get();
