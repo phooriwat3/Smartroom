@@ -1504,9 +1504,13 @@ const SmartRoomApplication: React.FC = () => {
               setFilterType('All');
               setIsMobileDrawerOpen(false);
             }}
-            className="flex items-center text-brand-500 mb-6 transition-all cursor-pointer hover:opacity-85 active:scale-[0.99]"
+            className="flex items-center space-x-3 text-brand-500 mb-6 transition-all cursor-pointer hover:opacity-85 active:scale-[0.99]"
           >
-            <span className="text-xl font-bold tracking-tight">TOKIN Smart Room</span>
+            <img src="/favicon.png" alt="TOKIN Smart Room Logo" className="w-9 h-9 object-contain" />
+            <div className="flex flex-col">
+              <span className="text-xl font-extrabold tracking-tight leading-none text-brand-500">TOKIN</span>
+              <span className="text-xs font-bold tracking-wider text-slate-400 mt-1">Smart Room</span>
+            </div>
           </div>
 
           {/* Language Switcher */}
