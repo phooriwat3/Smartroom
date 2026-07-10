@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord, EmailSentStatus } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen } from 'lucide-react';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen, Wrench, Send } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
 import { collection, onSnapshot, setDoc, doc } from 'firebase/firestore';
@@ -157,6 +157,27 @@ interface AdminPanelProps {
 
 type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected' | 'noCheckIn';
 type EmailHistoryVerificationStatus = 'pendingSend' | 'waitForVerify' | 'notVerified' | 'verified' | 'na';
+type AdminTab = 'bookings' | 'rooms' | 'users' | 'analytics' | 'emails' | 'tools';
+type InternalBookingTarget = 'single' | 'all';
+type InternalBookingStatus = BookingStatus.CONFIRMED | BookingStatus.VERIFIED | BookingStatus.NO_SHOW;
+type InternalAdminToolName = 'send_test_email' | 'update_booking_verify_status' | 'scan_booking_data_repair' | 'apply_booking_data_repair';
+type BookingRepairIssue = {
+  bookingId: string;
+  title: string;
+  roomId: string;
+  status: string;
+  issueType: string;
+  detail: string;
+  safeRepair: boolean;
+};
+type BookingRepairResult = {
+  checkedCount?: number;
+  repairedCount?: number;
+  repairableCount?: number;
+  issues?: BookingRepairIssue[];
+  summary?: Record<string, number>;
+  scan?: BookingRepairResult;
+};
 
 const STATUS_LABEL_FALLBACKS = {
   en: {
@@ -289,7 +310,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   }, [currentUser]);
 
   // UI State
-  const [activeTab, setActiveTab] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('analytics');
+  const [activeTab, setActiveTab] = useState<AdminTab>('analytics');
+  const [internalTestEmail, setInternalTestEmail] = useState('');
+  const [isSendingInternalTestEmail, setIsSendingInternalTestEmail] = useState(false);
+  const [internalBookingTarget, setInternalBookingTarget] = useState<InternalBookingTarget>('single');
+  const [internalBookingId, setInternalBookingId] = useState('');
+  const [internalBookingStatus, setInternalBookingStatus] = useState<InternalBookingStatus>(BookingStatus.VERIFIED);
+  const [isUpdatingInternalBookings, setIsUpdatingInternalBookings] = useState(false);
+  const [bookingRepairResult, setBookingRepairResult] = useState<BookingRepairResult | null>(null);
+  const [isScanningBookingRepair, setIsScanningBookingRepair] = useState(false);
+  const [isRepairingBookingData, setIsRepairingBookingData] = useState(false);
 
   const sortedRooms = useMemo(() => {
     const order: Record<string, number> = {
@@ -401,7 +431,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         if (auth.currentUser) {
           await auth.currentUser.getIdToken(true);
         }
-        completeLogin(resData.user);
+        completeLogin({
+          ...resData.user,
+          password: hashed,
+        });
       } else {
         setLoginErrorKey('invalidUserPass');
       }
@@ -1162,6 +1195,174 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [activeTab, currentUser?.id, currentUser?.username, language]);
 
+  const sortedInternalBookingOptions = useMemo(() => (
+    [...bookings].sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
+  ), [bookings]);
+
+  useEffect(() => {
+    if (sortedInternalBookingOptions.length === 0) {
+      setInternalBookingId('');
+      return;
+    }
+
+    if (!internalBookingId || !sortedInternalBookingOptions.some(booking => booking.id === internalBookingId)) {
+      setInternalBookingId(sortedInternalBookingOptions[0].id);
+    }
+  }, [sortedInternalBookingOptions, internalBookingId]);
+
+  const getCurrentAdminAuthPayload = () => {
+    if (!currentUser) return null;
+    return {
+      id: currentUser.id,
+      firestoreDocId: currentUser.id,
+      username: currentUser.username,
+      password: currentUser.password || '',
+      role: currentUser.role,
+    };
+  };
+
+  const isYageoEmailAddress = (email: string) => /^[^\s@]+@yageo\.com$/i.test(email.trim());
+
+  const runInternalAdminTool = async <T,>(tool: InternalAdminToolName, payload: Record<string, unknown> = {}) => {
+    const adminPayload = getCurrentAdminAuthPayload();
+    if (!adminPayload) {
+      throw new Error('Admin session is required.');
+    }
+
+    const runTool = httpsCallable(functions, 'runInternalAdminTool');
+    const response = await runTool({
+      tool,
+      payload,
+      admin: adminPayload,
+    });
+    return response.data as T;
+  };
+
+  const getInternalStatusLabel = (status: InternalBookingStatus) => {
+    if (status === BookingStatus.VERIFIED) return language === 'th' ? 'Verified' : 'Verified';
+    if (status === BookingStatus.NO_SHOW) return language === 'th' ? 'No show' : 'No show';
+    return language === 'th' ? 'Confirmed / wait for verify' : 'Confirmed / wait for verify';
+  };
+
+  const handleSendInternalTestEmail = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    const email = internalTestEmail.trim().toLowerCase();
+    if (!isYageoEmailAddress(email)) {
+      showNotification('Enter a valid @yageo.com email address.', 'error');
+      return;
+    }
+
+    setIsSendingInternalTestEmail(true);
+    try {
+      await runInternalAdminTool('send_test_email', { email });
+      showNotification('Internal test email sent successfully.', 'success');
+      setInternalTestEmail('');
+      if (activeTab === 'emails') {
+        void loadEmailHistory();
+      }
+    } catch (error) {
+      console.error('Internal test email failed', error);
+      showNotification(`Internal test email failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsSendingInternalTestEmail(false);
+    }
+  };
+
+  const runInternalBookingStatusUpdate = async () => {
+    setIsUpdatingInternalBookings(true);
+    try {
+      const data = await runInternalAdminTool<{ updatedCount?: number; missingIds?: string[] }>('update_booking_verify_status', {
+        targetStatus: internalBookingStatus,
+        allBookings: internalBookingTarget === 'all',
+        bookingIds: internalBookingTarget === 'single' ? [internalBookingId] : [],
+      });
+      const missingCount = Array.isArray(data.missingIds) ? data.missingIds.length : 0;
+      showNotification(
+        `Updated ${data.updatedCount || 0} booking${data.updatedCount === 1 ? '' : 's'}${missingCount ? ` (${missingCount} missing)` : ''}.`,
+        'success'
+      );
+    } catch (error) {
+      console.error('Internal booking status update failed', error);
+      showNotification(`Booking status update failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsUpdatingInternalBookings(false);
+      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const handleInternalBookingStatusSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (internalBookingTarget === 'single' && !internalBookingId) {
+      showNotification('Select a booking first.', 'error');
+      return;
+    }
+
+    const targetText = internalBookingTarget === 'all'
+      ? 'all bookings in the collection'
+      : `booking ${internalBookingId}`;
+    const statusText = getInternalStatusLabel(internalBookingStatus);
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Change Booking Verification Status',
+      message: `Change ${targetText} to ${statusText}?`,
+      isDanger: internalBookingTarget === 'all',
+      confirmText: 'Apply',
+      cancelText: 'Cancel',
+      onConfirm: runInternalBookingStatusUpdate,
+    });
+  };
+
+  const handleScanBookingDataRepair = async () => {
+    setIsScanningBookingRepair(true);
+    try {
+      const result = await runInternalAdminTool<BookingRepairResult>('scan_booking_data_repair');
+      setBookingRepairResult(result);
+      showNotification(`Found ${result.issues?.length || 0} booking data issue${result.issues?.length === 1 ? '' : 's'}.`, 'info');
+    } catch (error) {
+      console.error('Booking data repair scan failed', error);
+      showNotification(`Booking data scan failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsScanningBookingRepair(false);
+    }
+  };
+
+  const runBookingDataRepair = async () => {
+    setIsRepairingBookingData(true);
+    try {
+      const result = await runInternalAdminTool<BookingRepairResult>('apply_booking_data_repair');
+      const nextScan = result.scan || result;
+      setBookingRepairResult(nextScan);
+      showNotification(`Repaired ${result.repairedCount || 0} booking${result.repairedCount === 1 ? '' : 's'}.`, 'success');
+    } catch (error) {
+      console.error('Booking data repair failed', error);
+      showNotification(`Booking data repair failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsRepairingBookingData(false);
+      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const handleApplyBookingDataRepair = () => {
+    const repairableCount = bookingRepairResult?.repairableCount || 0;
+    if (repairableCount === 0) {
+      showNotification('No safe booking data repairs are available.', 'info');
+      return;
+    }
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Apply Booking Data Repairs',
+      message: `Apply ${repairableCount} safe booking data repair${repairableCount === 1 ? '' : 's'}? This archives expired unverified bookings as missed check-in.`,
+      isDanger: false,
+      confirmText: 'Repair',
+      cancelText: 'Cancel',
+      onConfirm: runBookingDataRepair,
+    });
+  };
+
   const renderLanguageSwitcher = (className = '') => {
     const updateLanguage = setLanguage;
     if (!updateLanguage) return null;
@@ -1323,6 +1524,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Mail className="w-4 h-4 mr-2" />
           {t.emailHistoryTab}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('tools')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'tools' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          <Wrench className="w-4 h-4 mr-2" />
+          Internal Tools
         </button>
 
         {/* Room management is accessible to all admins */}
@@ -2020,6 +2229,225 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'tools' && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800 animate-in fade-in zoom-in-95 duration-200">
+          <div className="p-5 border-b border-slate-200">
+            <h2 className="font-bold text-slate-800 flex items-center">
+              <Wrench className="w-4 h-4 mr-2 text-brand-500" />
+              Internal Tools
+            </h2>
+            <p className="text-xs text-slate-500 font-medium mt-1">Admin-only utilities for email delivery checks and booking verification status changes.</p>
+          </div>
+
+          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 p-5">
+            <form onSubmit={handleSendInternalTestEmail} className="border border-slate-200 rounded-xl p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center">
+                  <Mail className="w-4 h-4 mr-2 text-brand-500" />
+                  Mail Send Test
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">Send a test email through the configured Power Automate mail flow.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Recipient email</label>
+                <input
+                  type="email"
+                  value={internalTestEmail}
+                  onChange={(event) => setInternalTestEmail(event.target.value)}
+                  placeholder="name@yageo.com"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSendingInternalTestEmail}
+                className="inline-flex items-center justify-center px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-bold disabled:opacity-60 disabled:cursor-wait"
+              >
+                {isSendingInternalTestEmail ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 mr-2" />
+                )}
+                Send Test Mail
+              </button>
+            </form>
+
+            <form onSubmit={handleInternalBookingStatusSubmit} className="border border-slate-200 rounded-xl p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center">
+                  <ShieldCheck className="w-4 h-4 mr-2 text-brand-500" />
+                  Booking Verify Status
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">Change the verification status for one booking or all current bookings.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Target</label>
+                <div className="inline-flex bg-slate-100 p-1 rounded-lg border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => setInternalBookingTarget('single')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${internalBookingTarget === 'single' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    One booking
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setInternalBookingTarget('all')}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${internalBookingTarget === 'all' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  >
+                    All bookings
+                  </button>
+                </div>
+              </div>
+
+              {internalBookingTarget === 'single' && (
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 mb-1">Booking</label>
+                  <select
+                    value={internalBookingId}
+                    onChange={(event) => setInternalBookingId(event.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                  >
+                    {sortedInternalBookingOptions.length === 0 ? (
+                      <option value="">No bookings available</option>
+                    ) : (
+                      sortedInternalBookingOptions.map((booking) => (
+                        <option key={booking.id} value={booking.id}>
+                          {`${formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} | ${formatTimeRange(booking.startTime, booking.endTime)} | ${getRoomName(booking.roomId)} | ${translateText(booking.title, language)}`}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
+
+              {internalBookingTarget === 'all' && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs font-semibold text-amber-800 flex items-start">
+                  <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0" />
+                  This will update every current booking in the bookings collection. You will be asked to confirm before it runs.
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">New verify status</label>
+                <select
+                  value={internalBookingStatus}
+                  onChange={(event) => setInternalBookingStatus(event.target.value as InternalBookingStatus)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                >
+                  <option value={BookingStatus.CONFIRMED}>Confirmed / wait for verify</option>
+                  <option value={BookingStatus.VERIFIED}>Verified</option>
+                  <option value={BookingStatus.NO_SHOW}>No show</option>
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isUpdatingInternalBookings || (internalBookingTarget === 'single' && !internalBookingId)}
+                className="inline-flex items-center justify-center px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors font-bold disabled:opacity-60 disabled:cursor-wait"
+              >
+                {isUpdatingInternalBookings ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <ShieldCheck className="w-4 h-4 mr-2" />
+                )}
+                Apply Status
+              </button>
+            </form>
+
+            <div className="border border-slate-200 rounded-xl p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center">
+                  <FileText className="w-4 h-4 mr-2 text-brand-500" />
+                  Booking Data Repair
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">Find missing email, invalid status, missing room, and expired verification-window issues.</p>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={handleScanBookingDataRepair}
+                  disabled={isScanningBookingRepair || isRepairingBookingData}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-wait"
+                >
+                  {isScanningBookingRepair ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Search className="w-4 h-4 mr-2" />
+                  )}
+                  Scan
+                </button>
+                <button
+                  type="button"
+                  onClick={handleApplyBookingDataRepair}
+                  disabled={isRepairingBookingData || (bookingRepairResult?.repairableCount || 0) === 0}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isRepairingBookingData ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Check className="w-4 h-4 mr-2" />
+                  )}
+                  Repair Safe
+                </button>
+              </div>
+
+              {bookingRepairResult ? (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="rounded-lg bg-slate-50 border border-slate-200 p-2">
+                      <div className="font-bold text-slate-500">Checked</div>
+                      <div className="text-lg font-black text-slate-900">{bookingRepairResult.checkedCount || 0}</div>
+                    </div>
+                    <div className="rounded-lg bg-emerald-50 border border-emerald-100 p-2">
+                      <div className="font-bold text-emerald-700">Safe repair</div>
+                      <div className="text-lg font-black text-emerald-800">{bookingRepairResult.repairableCount || 0}</div>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-[11px] font-bold text-slate-600">
+                    <div className="rounded-md bg-slate-50 px-2 py-1">Missing email: {bookingRepairResult.summary?.missingEmail || 0}</div>
+                    <div className="rounded-md bg-slate-50 px-2 py-1">Invalid status: {bookingRepairResult.summary?.invalidStatus || 0}</div>
+                    <div className="rounded-md bg-slate-50 px-2 py-1">Missing room: {bookingRepairResult.summary?.missingRoom || 0}</div>
+                    <div className="rounded-md bg-slate-50 px-2 py-1">Expired window: {bookingRepairResult.summary?.expiredVerificationWindow || 0}</div>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto rounded-lg border border-slate-200 divide-y divide-slate-100">
+                    {(bookingRepairResult.issues || []).length === 0 ? (
+                      <div className="px-3 py-4 text-xs font-semibold text-slate-500 text-center">No booking data issues found.</div>
+                    ) : (
+                      (bookingRepairResult.issues || []).slice(0, 20).map((issue) => (
+                        <div key={`${issue.bookingId}-${issue.issueType}`} className="p-3 text-xs">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="font-bold text-slate-900 truncate">{issue.title || issue.bookingId}</div>
+                            <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black ${issue.safeRepair ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {issue.safeRepair ? 'safe' : 'review'}
+                            </span>
+                          </div>
+                          <div className="mt-1 font-semibold text-slate-500">{issue.bookingId} | {issue.status || '-'}</div>
+                          <div className="mt-1 text-slate-600">{issue.detail}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  {(bookingRepairResult.issues || []).length > 20 && (
+                    <p className="text-[11px] font-semibold text-slate-500">Showing first 20 issues.</p>
+                  )}
+                </div>
+              ) : (
+                <div className="rounded-lg border border-dashed border-slate-200 px-3 py-6 text-center text-xs font-semibold text-slate-500">
+                  Run a scan to review booking data issues.
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}

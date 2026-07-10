@@ -53,6 +53,14 @@ const EMAIL_HTTPS_OPTIONS = {
   ...APP_HTTPS_OPTIONS,
   secrets: [POWER_AUTOMATE_VERIFICATION_FLOW_URL],
 };
+const INTERNAL_TOOL_HTTPS_OPTIONS = {
+  ...APP_HTTPS_OPTIONS,
+  cors: true,
+};
+const INTERNAL_TOOL_EMAIL_HTTPS_OPTIONS = {
+  ...APP_HTTPS_OPTIONS,
+  cors: true,
+};
 const USER_LOOKUP_HTTPS_OPTIONS = {
   ...APP_HTTPS_OPTIONS,
   secrets: [POWER_AUTOMATE_USER_LOOKUP_FLOW_URL],
@@ -1109,6 +1117,192 @@ function assertRoomImageUrl(value) {
   return imageUrl;
 }
 
+function assertInternalVerificationStatus(value) {
+  const status = assertString(value, "targetStatus").toUpperCase();
+  if (!["CONFIRMED", "VERIFIED", "NO_SHOW"].includes(status)) {
+    throw new HttpsError("invalid-argument", "targetStatus must be CONFIRMED, VERIFIED, or NO_SHOW.");
+  }
+  return status;
+}
+
+function buildInternalVerificationStatusUpdate(targetStatus) {
+  const update = {
+    status: targetStatus,
+    internalToolUpdatedAt: FieldValue.serverTimestamp(),
+  };
+
+  if (targetStatus === "VERIFIED") {
+    return {
+      ...update,
+      verifiedAt: FieldValue.serverTimestamp(),
+      actualStartTime: FieldValue.serverTimestamp(),
+      noShowMarkedAt: FieldValue.delete(),
+      verificationMethod: "admin-internal-tool",
+      verificationTokenHash: FieldValue.delete(),
+      verificationTokenCreatedAt: FieldValue.delete(),
+      verificationTokenExpiresAt: FieldValue.delete(),
+      verifyUrl: FieldValue.delete(),
+    };
+  }
+
+  if (targetStatus === "NO_SHOW") {
+    return {
+      ...update,
+      noShowMarkedAt: FieldValue.serverTimestamp(),
+      verifiedAt: FieldValue.delete(),
+      actualStartTime: FieldValue.delete(),
+      actualEndTime: FieldValue.delete(),
+      verificationMethod: FieldValue.delete(),
+      verificationTokenHash: FieldValue.delete(),
+      verificationTokenCreatedAt: FieldValue.delete(),
+      verificationTokenExpiresAt: FieldValue.delete(),
+      verifyUrl: FieldValue.delete(),
+    };
+  }
+
+  return {
+    ...update,
+    noShowMarkedAt: FieldValue.delete(),
+    verifiedAt: FieldValue.delete(),
+    actualStartTime: FieldValue.delete(),
+    actualEndTime: FieldValue.delete(),
+    verificationMethod: FieldValue.delete(),
+  };
+}
+
+function isAllowedBookingStatus(status) {
+  return ["PENDING", "CONFIRMED", "VERIFIED", "REJECTED", "NO_SHOW"].includes(status);
+}
+
+function isValidBookingEmailValue(email) {
+  if (typeof email !== "string" || !email.trim()) return false;
+  const domain = getYageoEmailDomain().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^[^\\s@]+@${domain}$`, "i").test(email.trim());
+}
+
+function buildBookingRepairIssue(bookingId, booking, issueType, detail, safeRepair) {
+  return {
+    bookingId,
+    title: booking.title || "",
+    organizer: booking.organizer || "",
+    roomId: booking.roomId || "",
+    status: booking.status || "",
+    startTime: serializeDate(booking.startTime),
+    endTime: serializeDate(booking.endTime),
+    issueType,
+    detail,
+    safeRepair: safeRepair === true,
+  };
+}
+
+async function scanBookingDataRepairIssues() {
+  const [bookingsSnap, roomsSnap] = await Promise.all([
+    db.collection("bookings").get(),
+    db.collection("rooms").get(),
+  ]);
+  const roomIds = new Set(roomsSnap.docs.map((snap) => snap.id));
+  const issues = [];
+  const summary = {
+    missingEmail: 0,
+    invalidStatus: 0,
+    missingRoom: 0,
+    expiredVerificationWindow: 0,
+  };
+
+  bookingsSnap.docs.forEach((snap) => {
+    const booking = snap.data() || {};
+    const status = typeof booking.status === "string" ? booking.status : "";
+
+    if (!isValidBookingEmailValue(booking.email)) {
+      summary.missingEmail += 1;
+      issues.push(buildBookingRepairIssue(
+        snap.id,
+        booking,
+        "missing_email",
+        `Booking email is missing or is not a valid @${getYageoEmailDomain()} address.`,
+        false
+      ));
+    }
+
+    if (!isAllowedBookingStatus(status)) {
+      summary.invalidStatus += 1;
+      issues.push(buildBookingRepairIssue(
+        snap.id,
+        booking,
+        "invalid_status",
+        "Booking status is not one of PENDING, CONFIRMED, VERIFIED, REJECTED, or NO_SHOW.",
+        false
+      ));
+    }
+
+    if (!booking.roomId || !roomIds.has(booking.roomId)) {
+      summary.missingRoom += 1;
+      issues.push(buildBookingRepairIssue(
+        snap.id,
+        booking,
+        "missing_room",
+        "Booking references a room document that does not exist.",
+        false
+      ));
+    }
+
+    const windowState = getCheckInWindowState(booking);
+    const isExpiredActiveBooking = (
+      windowState.state === "expired" &&
+      status === "CONFIRMED" &&
+      !booking.actualStartTime
+    );
+    if (isExpiredActiveBooking) {
+      summary.expiredVerificationWindow += 1;
+      issues.push(buildBookingRepairIssue(
+        snap.id,
+        booking,
+        "expired_verification_window",
+        "Booking passed the check-in window without verification. Safe repair archives it as missed check-in.",
+        true
+      ));
+    }
+  });
+
+  return {
+    success: true,
+    checkedCount: bookingsSnap.size,
+    issues,
+    summary,
+    repairableCount: issues.filter((issue) => issue.safeRepair).length,
+  };
+}
+
+async function applyBookingDataRepairs() {
+  const scan = await scanBookingDataRepairIssues();
+  const repairableIssues = scan.issues.filter((issue) => issue.issueType === "expired_verification_window");
+  const repairedIds = [];
+  const failed = [];
+
+  for (const issue of repairableIssues) {
+    try {
+      const archived = await archiveMissedCheckInById(issue.bookingId);
+      if (archived) {
+        repairedIds.push(issue.bookingId);
+      }
+    } catch (error) {
+      failed.push({
+        bookingId: issue.bookingId,
+        message: error && error.message ? error.message : String(error),
+      });
+    }
+  }
+
+  const afterScan = await scanBookingDataRepairIssues();
+  return {
+    success: failed.length === 0,
+    repairedCount: repairedIds.length,
+    repairedIds,
+    failed,
+    scan: afterScan,
+  };
+}
+
 function sanitizeRoomMaintenanceRecord(rawRecord, room) {
   if (!rawRecord || typeof rawRecord !== "object") return null;
 
@@ -1818,6 +2012,192 @@ exports.listEmailSentHistory = onCall(APP_HTTPS_OPTIONS, async (request) => {
     throw new HttpsError(
       "internal",
       `Email history load failed: ${error && error.message ? error.message : String(error)}`
+    );
+  }
+});
+
+async function runInternalSendTestEmailTool(payload, data) {
+  const email = assertYageoEmail(payload.email);
+  const adminUsername = data.admin && typeof data.admin.username === "string"
+    ? data.admin.username
+    : "admin";
+  const subject = "[TOKIN Smart Room] Internal email test";
+  const message = [
+    '<div style="margin:0;padding:24px;background:#f8fafc;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">',
+    '<div style="max-width:560px;margin:0 auto;background:#ffffff;border:1px solid #e2e8f0;border-radius:12px;overflow:hidden;">',
+    '<div style="background:#0f172a;color:#ffffff;padding:18px 22px;">',
+    '<div style="font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">TOKIN Smart Room</div>',
+    '<div style="font-size:22px;font-weight:800;margin-top:6px;">Internal Email Test</div>',
+    '</div>',
+    '<div style="padding:22px;font-size:14px;line-height:21px;">',
+    '<p style="margin:0 0 12px;">This message confirms that the internal email tool can reach the configured Power Automate flow.</p>',
+    `<p style="margin:0 0 12px;"><strong>Requested by:</strong> ${escapeHtml(adminUsername)}</p>`,
+    `<p style="margin:0;"><strong>Time:</strong> ${escapeHtml(formatDateTimeForEmail(new Date()))}</p>`,
+    '</div>',
+    '</div>',
+    '</div>',
+  ].join("");
+  const historyBase = {
+    recipientEmail: email,
+    recipientName: adminUsername,
+    subject,
+    purpose: "Internal Email Test",
+  };
+
+  try {
+    await sendPowerAutomateEmail({
+      to: email,
+      subject,
+      senderName: "TOKIN Smart Room",
+      message,
+    });
+
+    const historyId = await recordEmailSentHistory({
+      ...historyBase,
+      status: "successful",
+    });
+
+    return {
+      success: true,
+      email,
+      historyId,
+    };
+  } catch (error) {
+    await recordEmailSentHistory({
+      ...historyBase,
+      status: "failed",
+      errorCode: getEmailFailureCode(error),
+      errorMessage: getEmailFailureMessage(error),
+    });
+    throw error;
+  }
+}
+
+async function runInternalBookingStatusTool(payload) {
+  const targetStatus = assertInternalVerificationStatus(payload.targetStatus);
+  const update = buildInternalVerificationStatusUpdate(targetStatus);
+  const updateAll = payload.allBookings === true;
+  const bookingIds = Array.isArray(payload.bookingIds)
+    ? [...new Set(payload.bookingIds.map((id) => assertDocumentId(id, "bookingId")))]
+    : [];
+
+  if (!updateAll && bookingIds.length === 0) {
+    throw new HttpsError("invalid-argument", "At least one bookingId is required unless allBookings is true.");
+  }
+
+  const bookingRefs = updateAll
+    ? (await db.collection("bookings").get()).docs.map((snap) => snap.ref)
+    : bookingIds.map((id) => db.collection("bookings").doc(id));
+
+  if (bookingRefs.length === 0) {
+    return {
+      success: true,
+      targetStatus,
+      updatedCount: 0,
+      missingIds: [],
+    };
+  }
+
+  const existingRefs = [];
+  const missingIds = [];
+  if (updateAll) {
+    existingRefs.push(...bookingRefs);
+  } else {
+    const snapshots = await Promise.all(bookingRefs.map((ref) => ref.get()));
+    snapshots.forEach((snap, index) => {
+      if (snap.exists) {
+        existingRefs.push(snap.ref);
+      } else {
+        missingIds.push(bookingIds[index]);
+      }
+    });
+  }
+
+  let updatedCount = 0;
+  for (let i = 0; i < existingRefs.length; i += 450) {
+    const batch = db.batch();
+    existingRefs.slice(i, i + 450).forEach((ref) => {
+      batch.update(ref, update);
+      updatedCount += 1;
+    });
+    await batch.commit();
+  }
+
+  return {
+    success: true,
+    targetStatus,
+    updatedCount,
+    missingIds,
+  };
+}
+
+async function runInternalAdminToolByName(tool, payload, data) {
+  if (tool === "send_test_email") {
+    return runInternalSendTestEmailTool(payload, data);
+  }
+  if (tool === "update_booking_verify_status") {
+    return runInternalBookingStatusTool(payload);
+  }
+  if (tool === "scan_booking_data_repair") {
+    return scanBookingDataRepairIssues();
+  }
+  if (tool === "apply_booking_data_repair") {
+    return applyBookingDataRepairs();
+  }
+
+  throw new HttpsError("invalid-argument", `Unsupported internal admin tool: ${tool}`);
+}
+
+exports.runInternalAdminTool = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+    const tool = assertString(data.tool, "tool");
+    const payload = data.payload && typeof data.payload === "object" ? data.payload : {};
+    return await runInternalAdminToolByName(tool, payload, data);
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      throw error;
+    }
+
+    console.error("runInternalAdminTool failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `Internal admin tool failed: ${error && error.message ? error.message : String(error)}`
+    );
+  }
+});
+
+exports.sendInternalTestEmail = onCall(INTERNAL_TOOL_EMAIL_HTTPS_OPTIONS, async (request) => {
+  const data = request.data || {};
+  await assertAdminAccess(request, data);
+  return runInternalSendTestEmailTool(data, data);
+});
+
+exports.updateInternalBookingVerificationStatus = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+    return await runInternalBookingStatusTool(data);
+  } catch (error) {
+    if (error instanceof HttpsError || typeof (error && error.code) === "string") {
+      throw error;
+    }
+
+    console.error("updateInternalBookingVerificationStatus failed", {
+      message: error && error.message,
+      code: error && error.code,
+      stack: error && error.stack,
+    });
+
+    throw new HttpsError(
+      "internal",
+      `Internal booking status update failed: ${error && error.message ? error.message : String(error)}`
     );
   }
 });
