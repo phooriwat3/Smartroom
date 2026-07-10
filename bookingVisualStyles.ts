@@ -64,25 +64,25 @@ export const getDepartmentBookingStyleKey = (department?: string | null) => {
 };
 
 const DEPARTMENT_DARK_STYLES: Record<string, DepartmentBookingStyle> = {
-  managing_director: { itemClass: '!bg-amber-200 !border-amber-400 !text-amber-950', badgeClass: '!bg-amber-300/80 !border-amber-400 !text-amber-955', dotClass: 'bg-amber-500' },
-  hr: { itemClass: '!bg-rose-200 !border-rose-400 !text-rose-950', badgeClass: '!bg-rose-300/80 !border-rose-400 !text-rose-955', dotClass: 'bg-rose-500' },
-  sustainability: { itemClass: '!bg-emerald-200 !border-emerald-400 !text-emerald-950', badgeClass: '!bg-emerald-300/80 !border-emerald-400 !text-emerald-955', dotClass: 'bg-emerald-500' },
-  fin_acc: { itemClass: '!bg-cyan-200 !border-cyan-400 !text-cyan-950', badgeClass: '!bg-cyan-300/80 !border-cyan-400 !text-cyan-955', dotClass: 'bg-cyan-500' },
-  planning: { itemClass: '!bg-blue-200 !border-blue-400 !text-blue-950', badgeClass: '!bg-blue-300/80 !border-blue-400 !text-blue-955', dotClass: 'bg-blue-500' },
-  procurement: { itemClass: '!bg-violet-200 !border-violet-400 !text-violet-950', badgeClass: '!bg-violet-300/80 !border-violet-400 !text-violet-955', dotClass: 'bg-violet-500' },
-  prod_eng: { itemClass: '!bg-orange-200 !border-orange-400 !text-orange-950', badgeClass: '!bg-orange-300/80 !border-orange-400 !text-orange-955', dotClass: 'bg-orange-500' },
-  technology: { itemClass: '!bg-indigo-200 !border-indigo-400 !text-indigo-950', badgeClass: '!bg-indigo-300/80 !border-indigo-400 !text-indigo-955', dotClass: 'bg-indigo-500' },
-  equipment_engineering: { itemClass: '!bg-teal-200 !border-teal-400 !text-teal-950', badgeClass: '!bg-teal-300/80 !border-teal-400 !text-teal-955', dotClass: 'bg-teal-500' },
-  facility: { itemClass: '!bg-slate-200 !border-slate-400 !text-slate-900', badgeClass: '!bg-slate-300/80 !border-slate-400 !text-slate-900', dotClass: 'bg-slate-500' },
-  qa: { itemClass: '!bg-purple-200 !border-purple-400 !text-purple-950', badgeClass: '!bg-purple-300/80 !border-purple-400 !text-purple-950', dotClass: 'bg-purple-500' },
-  ta_mfg: { itemClass: '!bg-lime-200 !border-lime-400 !text-lime-950', badgeClass: '!bg-lime-300/80 !border-lime-400 !text-lime-955', dotClass: 'bg-lime-500' },
-  sc: { itemClass: '!bg-green-200 !border-green-400 !text-green-950', badgeClass: '!bg-green-300/80 !border-green-400 !text-green-955', dotClass: 'bg-green-500' },
-  it: { itemClass: '!bg-sky-200 !border-sky-400 !text-sky-950', badgeClass: '!bg-sky-300/80 !border-sky-400 !text-sky-950', dotClass: 'bg-sky-500' },
+  managing_director: { itemClass: '!bg-yellow-300 !border-yellow-400 !text-yellow-950', badgeClass: '!bg-yellow-400/80 !border-yellow-500 !text-yellow-950', dotClass: 'bg-yellow-500' },
+  hr: { itemClass: '!bg-rose-300 !border-rose-400 !text-rose-950', badgeClass: '!bg-rose-400/80 !border-rose-500 !text-rose-950', dotClass: 'bg-rose-500' },
+  sustainability: { itemClass: '!bg-emerald-300 !border-emerald-400 !text-emerald-950', badgeClass: '!bg-emerald-400/80 !border-emerald-500 !text-emerald-955', dotClass: 'bg-emerald-500' },
+  fin_acc: { itemClass: '!bg-pink-300 !border-pink-400 !text-pink-955', badgeClass: '!bg-pink-400/80 !border-pink-500 !text-pink-955', dotClass: 'bg-pink-500' },
+  planning: { itemClass: '!bg-blue-300 !border-blue-400 !text-blue-955', badgeClass: '!bg-blue-400/80 !border-blue-500 !text-blue-955', dotClass: 'bg-blue-500' },
+  procurement: { itemClass: '!bg-fuchsia-300 !border-fuchsia-400 !text-fuchsia-950', badgeClass: '!bg-fuchsia-400/80 !border-fuchsia-500 !text-fuchsia-950', dotClass: 'bg-fuchsia-500' },
+  prod_eng: { itemClass: '!bg-orange-300 !border-orange-400 !text-orange-950', badgeClass: '!bg-orange-400/80 !border-orange-500 !text-orange-950', dotClass: 'bg-orange-500' },
+  technology: { itemClass: '!bg-purple-300 !border-purple-400 !text-purple-950', badgeClass: '!bg-purple-400/80 !border-purple-500 !text-purple-950', dotClass: 'bg-purple-500' },
+  equipment_engineering: { itemClass: '!bg-teal-300 !border-teal-400 !text-teal-950', badgeClass: '!bg-teal-400/80 !border-teal-500 !text-teal-955', dotClass: 'bg-teal-500' },
+  facility: { itemClass: '!bg-slate-300 !border-slate-400 !text-slate-900', badgeClass: '!bg-slate-400/80 !border-slate-500 !text-slate-900', dotClass: 'bg-slate-500' },
+  qa: { itemClass: '!bg-red-300 !border-red-400 !text-red-950', badgeClass: '!bg-red-400/80 !border-red-500 !text-red-950', dotClass: 'bg-red-500' },
+  ta_mfg: { itemClass: '!bg-lime-300 !border-lime-400 !text-lime-950', badgeClass: '!bg-lime-400/80 !border-lime-500 !text-lime-955', dotClass: 'bg-lime-500' },
+  sc: { itemClass: '!bg-green-300 !border-green-400 !text-green-950', badgeClass: '!bg-green-400/80 !border-green-500 !text-green-955', dotClass: 'bg-green-500' },
+  it: { itemClass: '!bg-sky-300 !border-sky-400 !text-sky-950', badgeClass: '!bg-sky-400/80 !border-sky-500 !text-sky-905', dotClass: 'bg-sky-500' },
 };
 
 const DEFAULT_DARK_STYLE: DepartmentBookingStyle = {
-  itemClass: '!bg-orange-200 !border-orange-400 !text-orange-955',
-  badgeClass: '!bg-orange-300/80 !border-orange-400 !text-orange-955',
+  itemClass: '!bg-orange-300 !border-orange-400 !text-orange-955',
+  badgeClass: '!bg-orange-400/80 !border-orange-500 !text-orange-955',
   dotClass: 'bg-orange-500',
 };
 
@@ -97,7 +97,7 @@ export const getDepartmentBookingStyle = (
   if (isTimeline) {
     return DEPARTMENT_DARK_STYLES[styleKey] || DEFAULT_DARK_STYLE;
   }
-  return DEPARTMENT_STYLES[styleKey] || DEFAULT_STYLE;
+  return DEFAULT_STYLE;
 };
 export const getBookingDepartmentClass = (department?: string | null, options?: DepartmentBookingStyleOptions) => getDepartmentBookingStyle(department, options).itemClass;
 export const getBookingDepartmentBadgeClass = (department?: string | null, options?: DepartmentBookingStyleOptions) => getDepartmentBookingStyle(department, options).badgeClass;
