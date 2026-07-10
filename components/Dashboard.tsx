@@ -1045,27 +1045,27 @@ const Dashboard: React.FC<DashboardProps> = ({
         <div className="space-y-6">
           {/* Subview Toggle */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-200 pb-3 gap-3">
-            <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl w-full sm:w-auto">
+            <div className="flex space-x-1.5 bg-slate-100/90 border border-slate-200/60 p-1 rounded-xl w-full sm:w-auto shadow-inner">
               <button
                 type="button"
                 onClick={() => setDashboardActiveView('status')}
-                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${dashboardActiveView === 'status'
-                  ? 'bg-white text-brand-605 shadow-sm font-bold text-brand-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all duration-200 active:scale-95 border ${dashboardActiveView === 'status'
+                  ? 'bg-brand-500 text-white shadow-[0_2px_8px_rgba(249,115,22,0.25)] font-bold border-brand-600/10'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border-transparent'
                   }`}
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
+                <LayoutGrid className="w-4 h-4" />
                 <span>{t.statusCards}</span>
               </button>
               <button
                 type="button"
                 onClick={() => setDashboardActiveView('timeline')}
-                className={`flex-1 sm:flex-initial px-4 py-2 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all ${dashboardActiveView === 'timeline'
-                  ? 'bg-white text-brand-605 shadow-sm font-bold text-brand-600'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+                className={`flex-1 sm:flex-initial px-5 py-2.5 rounded-lg text-xs font-semibold flex items-center justify-center space-x-2 transition-all duration-200 active:scale-95 border ${dashboardActiveView === 'timeline'
+                  ? 'bg-brand-500 text-white shadow-[0_2px_8px_rgba(249,115,22,0.25)] font-bold border-brand-600/10'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/70 border-transparent'
                   }`}
               >
-                <Clock className="w-3.5 h-3.5" />
+                <Clock className="w-4 h-4" />
                 <span>{t.timelineGrid}</span>
               </button>
             </div>
