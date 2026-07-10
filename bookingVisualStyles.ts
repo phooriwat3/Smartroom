@@ -33,7 +33,7 @@ const DEPARTMENT_STYLES: Record<string, DepartmentBookingStyle> = {
   ta_mfg:            { itemClass: '!bg-lime-50 !border-lime-300 !text-lime-950',       badgeClass: '!bg-lime-100 !border-lime-300 !text-lime-800',       dotClass: 'bg-lime-500' },
   sc:                { itemClass: '!bg-green-50 !border-green-300 !text-green-950',   badgeClass: '!bg-green-100 !border-green-300 !text-green-800',   dotClass: 'bg-green-500' },
   it:                { itemClass: 'booking-it-neon',                                   badgeClass: 'booking-it-neon !border-cyan-300 !text-sky-950',     dotClass: 'bg-cyan-500' },
-  te:                { itemClass: '!bg-pink-50 !border-pink-300 !text-pink-950',       badgeClass: '!bg-pink-100 !border-pink-300 !text-pink-800',       dotClass: 'bg-pink-500' },
+  te:                { itemClass: '!bg-red-50 !border-red-300 !text-red-950',         badgeClass: '!bg-red-100 !border-red-300 !text-red-800',         dotClass: 'bg-red-500' },
 };
 
 const RAW_DEPARTMENT_ALIASES: Record<string, string> = {
@@ -81,7 +81,7 @@ const DEPARTMENT_DARK_STYLES: Record<string, DepartmentBookingStyle> = {
   ta_mfg:            { itemClass: '!bg-lime-300 !border-lime-400 !text-lime-950',          badgeClass: '!bg-lime-400/80 !border-lime-500 !text-lime-950',          dotClass: 'bg-lime-500' },   // 90°  yellow-green
   sc:                { itemClass: '!bg-green-300 !border-green-400 !text-green-950',       badgeClass: '!bg-green-400/80 !border-green-500 !text-green-950',       dotClass: 'bg-green-500' },  // 120° pure green
   it:                { itemClass: 'booking-it-neon',                                           badgeClass: 'booking-it-neon !border-cyan-400',                         dotClass: 'bg-cyan-400' },    // 🌈 RGB neon cycling
-  te:                { itemClass: '!bg-pink-300 !border-pink-400 !text-pink-950',          badgeClass: '!bg-pink-400/80 !border-pink-500 !text-pink-950',          dotClass: 'bg-pink-500' },   // 325° warm pink (distinct from rose)
+  te:                { itemClass: '!bg-red-300 !border-red-400 !text-red-950',          badgeClass: '!bg-red-400/80 !border-red-500 !text-red-950',          dotClass: 'bg-red-500' },    // 0°   pure red (distinct from rose/HR)
 };
 
 const DEFAULT_DARK_STYLE: DepartmentBookingStyle = {
