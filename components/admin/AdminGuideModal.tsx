@@ -86,46 +86,46 @@ export const AdminGuideModal: React.FC<AdminGuideModalProps> = ({
         <div className="p-6 overflow-y-auto flex-grow text-slate-800 scrollbar-thin text-sm leading-relaxed space-y-6">
           <div>
             <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
-               <Building2 className="w-4 h-4 mr-2" />
-               {c.tabs.rooms}
+              <Building2 className="w-4 h-4 mr-2" />
+              {c.tabs.rooms}
             </h3>
             <div className="mt-3 space-y-3">
-               {c.rooms.map(([title, desc]) => (
-                  <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-                     <h4 className="font-bold text-xs text-slate-900">{title}</h4>
-                     <p className="text-xs text-slate-600 mt-1">{desc}</p>
-                  </div>
-               ))}
+              {c.rooms.map(([title, desc]) => (
+                <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
+                  <h4 className="font-bold text-xs text-slate-900">{title}</h4>
+                  <p className="text-xs text-slate-600 mt-1">{desc}</p>
+                </div>
+              ))}
             </div>
           </div>
 
           <div>
             <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
-               <Calendar className="w-4 h-4 mr-2" />
-               {c.tabs.bookings}
+              <Calendar className="w-4 h-4 mr-2" />
+              {c.tabs.bookings}
             </h3>
             <div className="mt-3 space-y-3">
-               {c.bookings.map(([title, desc]) => (
-                  <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-                     <h4 className="font-bold text-xs text-slate-900">{title}</h4>
-                     <p className="text-xs text-slate-600 mt-1">{desc}</p>
-                  </div>
-               ))}
+              {c.bookings.map(([title, desc]) => (
+                <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
+                  <h4 className="font-bold text-xs text-slate-900">{title}</h4>
+                  <p className="text-xs text-slate-600 mt-1">{desc}</p>
+                </div>
+              ))}
             </div>
           </div>
 
           <div>
             <h3 className="font-bold text-brand-700 text-sm border-b border-brand-100 pb-1.5 flex items-center">
-               <UserCog className="w-4 h-4 mr-2" />
-               {c.tabs.users}
+              <UserCog className="w-4 h-4 mr-2" />
+              {c.tabs.users}
             </h3>
             <div className="mt-3 space-y-3">
-               {c.users.map(([title, desc]) => (
-                  <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
-                     <h4 className="font-bold text-xs text-slate-900">{title}</h4>
-                     <p className="text-xs text-slate-600 mt-1">{desc}</p>
-                  </div>
-               ))}
+              {c.users.map(([title, desc]) => (
+                <div key={title} className="bg-slate-50 p-3 rounded-lg border border-slate-200/60">
+                  <h4 className="font-bold text-xs text-slate-900">{title}</h4>
+                  <p className="text-xs text-slate-600 mt-1">{desc}</p>
+                </div>
+              ))}
             </div>
           </div>
         </div>
