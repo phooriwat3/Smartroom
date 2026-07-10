@@ -62,12 +62,7 @@
         85%  { box-shadow: 0 0 8px 2px #00ff44, 0 0 22px 5px #00ff4488, 0 0 50px 10px #00ff4433; outline-color: #00ff44; }
         100% { box-shadow: 0 0 8px 2px #00f5ff, 0 0 22px 5px #00f5ff88, 0 0 50px 10px #00f5ff33; outline-color: #00f5ff; }
       }
-      @keyframes itRgbSweep {
-        0%   { transform: translateX(-180%) skewX(-22deg); opacity: 0; }
-        15%  { opacity: 0.9; }
-        45%  { transform: translateX(180%) skewX(-22deg); opacity: 0; }
-        100% { transform: translateX(180%) skewX(-22deg); opacity: 0; }
-      }
+
       @keyframes itRgbBorder {
         0%   { border-color: #00f5ff; }
         14%  { border-color: #0055ff; }
@@ -105,22 +100,6 @@
           rgba(0,245,255,0.05) 3px,
           rgba(0,245,255,0.05) 4px
         );
-      }
-      .booking-it-neon::after {
-        content: "";
-        position: absolute;
-        inset: -80%;
-        z-index: 0;
-        pointer-events: none;
-        background: linear-gradient(
-          90deg,
-          transparent 0%,
-          rgba(0,245,255,0.25) 30%,
-          rgba(255,255,255,0.55) 50%,
-          rgba(0,245,255,0.25) 70%,
-          transparent 100%
-        );
-        animation: itRgbSweep 1.8s ease-in-out infinite;
       }
       .booking-it-neon * {
         color: inherit !important;
