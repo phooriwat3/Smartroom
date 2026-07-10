@@ -2500,7 +2500,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     ) : (
                       sortedInternalBookingOptions.map((booking) => (
                         <option key={booking.id} value={booking.id}>
-                          {`${formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} | ${formatTimeRange(booking.startTime, booking.endTime)} | ${getRoomName(booking.roomId)} | ${translateText(booking.title, language)}`}
+                          {`${formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} | ${formatTimeRange(booking.startTime, booking.endTime, language)} | ${getRoomName(booking.roomId)} | ${translateText(booking.title, language)}`}
                         </option>
                       ))
                     )}
