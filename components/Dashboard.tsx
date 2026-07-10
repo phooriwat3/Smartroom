@@ -24,7 +24,7 @@ import {
   CheckCircle
 } from 'lucide-react';
 import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions, formatTimeRange } from '../translations';
-import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState } from '../bookingVisualStyles';
+import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState, getBookingDepartmentClass } from '../bookingVisualStyles';
 import CheckInValidationModal from './CheckInValidationModal';
 import ConfirmationModal from './ConfirmationModal';
 
@@ -1353,31 +1353,37 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                                   renderedCells.push(
                                     <td key={`${hour}-${booking.id}`} colSpan={colSpan} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department, { context: 'timeline' })}
+                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1 text-left gap-0.5 border px-1.5 font-semibold overflow-hidden ${getBookingDepartmentClass(booking.department, { context: 'timeline' })}
                                           ${isNoCheckInStatus
-                                          ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
-                                          : isPending
-                                            ? 'bg-amber-50 border-amber-300 text-amber-900'
-                                            : 'bg-orange-100 border-orange-300 text-orange-950'
-                                        }
-                                        hover:scale-[1.02] hover:shadow-md cursor-pointer transition-all duration-200
+                                            ? 'border-rose-400 opacity-90 shadow-[inset_0_0_0_1px_rgba(244,63,94,0.1)]'
+                                            : isPending
+                                              ? 'border-dashed border-slate-400/60 opacity-95'
+                                              : 'border-slate-300/40'
+                                          }
+                                          hover:scale-[1.02] hover:shadow-md cursor-pointer transition-all duration-200
                                       `}
                                         title={`[${getBookingDisplayLabel(booking)}] ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
-                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
+                                        <span className={`self-start text-[8px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
                                           {getBookingDisplayLabel(booking)}
                                         </span>
-                                        <div className="truncate text-[10px] text-slate-800 font-bold w-full">
-                                          {isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}
+                                        <div className="truncate text-[9.5px] text-slate-800 font-bold w-full bg-white/70 px-1.5 py-0.5 rounded border border-white/80 flex items-center">
+                                          <span className="text-[7.5px] text-slate-500/70 mr-1 shrink-0 uppercase font-black">{language === 'th' ? 'ผู้จอง:' : 'Booker:'}</span>
+                                          <span className="truncate">{isNoCheckInStatus ? (language === 'th' ? 'ไม่มา Check-in' : 'No Check-in') : booking.organizer}</span>
                                         </div>
-                                        <div className="truncate text-[10px] text-slate-600 w-full">
-                                          {formatDepartment(booking.department) || '-'}
+                                        <div className="truncate text-[9px] text-slate-600 font-semibold w-full bg-white/50 px-1.5 py-0.5 rounded border border-white/60 flex items-center">
+                                          <span className="text-[7.5px] text-slate-500/70 mr-1 shrink-0 uppercase font-black">{language === 'th' ? 'แผนก:' : 'Dept:'}</span>
+                                          <span className="truncate">{formatDepartment(booking.department) || '-'}</span>
                                         </div>
-                                        <div className="truncate text-[10px] text-slate-600 w-full">
-                                          {booking.deskNumber || '-'}
-                                        </div>
-                                        <div className="timeline-grid-purpose text-[10px] text-slate-600" title={translateText(booking.title, language) || '-'}>
-                                          <span className="timeline-grid-purpose-track inline">
+                                        {booking.deskNumber && booking.deskNumber !== '-' && (
+                                          <div className="truncate text-[9px] text-slate-600 font-semibold w-full bg-white/50 px-1.5 py-0.5 rounded border border-white/60 flex items-center">
+                                            <span className="text-[7.5px] text-slate-500/70 mr-1 shrink-0 uppercase font-black">{language === 'th' ? 'ติดต่อ:' : 'Tel:'}</span>
+                                            <span className="truncate">{booking.deskNumber}</span>
+                                          </div>
+                                        )}
+                                        <div className="timeline-grid-purpose text-[9.5px] text-slate-700 font-bold bg-white/75 px-1.5 py-0.5 rounded border border-white/90 flex items-start w-full" title={translateText(booking.title, language) || '-'}>
+                                          <span className="text-[7.5px] text-slate-500/70 mr-1 shrink-0 uppercase font-black mt-[1.5px]">{language === 'th' ? 'งาน:' : 'Topic:'}</span>
+                                          <span className="timeline-grid-purpose-track inline truncate font-black">
                                             {translateText(booking.title, language) || '-'}
                                           </span>
                                         </div>
