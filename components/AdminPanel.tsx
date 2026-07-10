@@ -350,9 +350,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     onConfirm: () => { },
   });
   const [searchTerm, setSearchTerm] = useState('');
+  const [emailSearchTerm, setEmailSearchTerm] = useState('');
   const [historyFilterYear, setHistoryFilterYear] = useState<string>('all');
   const [historyFilterMonth, setHistoryFilterMonth] = useState<string>('all');
   const [historyFilterDay, setHistoryFilterDay] = useState<string>('');
+  const [historyFilterRoom, setHistoryFilterRoom] = useState<string>('all');
   const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
 
   // Modals
@@ -933,6 +935,33 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return list.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
   }, [emailHistory, bookings, rooms]);
 
+  const filteredEmailHistory = useMemo(() => {
+    const term = emailSearchTerm.trim().toLowerCase();
+    if (!term) return combinedEmailHistory;
+
+    return combinedEmailHistory.filter(record => {
+      const recipientName = (record.recipientName || '').toLowerCase();
+      const recipientEmail = (record.recipientEmail || '').toLowerCase();
+      const subject = (record.subject || '').toLowerCase();
+      const purpose = (record.purpose || '').toLowerCase();
+      const relatedBookingTitle = (record.relatedBookingTitle || '').toLowerCase();
+      const relatedRoomName = (record.relatedRoomName || '').toLowerCase();
+      const relatedRoomId = (record.relatedRoomId || '').toLowerCase();
+      const relatedBookingId = (record.relatedBookingId || '').toLowerCase();
+
+      return (
+        recipientName.includes(term) ||
+        recipientEmail.includes(term) ||
+        subject.includes(term) ||
+        purpose.includes(term) ||
+        relatedBookingTitle.includes(term) ||
+        relatedRoomName.includes(term) ||
+        relatedRoomId.includes(term) ||
+        relatedBookingId.includes(term)
+      );
+    });
+  }, [combinedEmailHistory, emailSearchTerm]);
+
   const bookingMatchesHistoryDateFilter = (booking: Booking) => {
     const bookingDate = booking.startTime;
     if (!bookingDate) return false;
@@ -955,6 +984,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (historyFilterMonth !== 'all') {
       const selectedMonth = parseInt(historyFilterMonth, 10);
       if ((bookingDate.getMonth() + 1) !== selectedMonth) return false;
+    }
+
+    // 5. Room Filter (if selected)
+    if (historyFilterRoom !== 'all') {
+      if (booking.roomId !== historyFilterRoom) return false;
     }
 
     return true;
@@ -1743,134 +1777,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             </div>
           </div>
 
-          {/* Metrics Stats Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-              <div className="p-3 rounded-lg bg-brand-50 text-brand-600">
-                <FileText className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalBookingsHeader}</div>
-                <div className="text-2xl font-bold text-slate-800">{analyticsData.totalBookings}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{language === 'th' ? 'รายการทั้งหมดในระบบ' : 'all records in the system'}</div>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-              <div className="p-3 rounded-lg bg-orange-50 text-orange-600">
-                <Flame className="w-6 h-6 animate-pulse" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.busiestRoomHeader}</div>
-                <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]" title={analyticsData.busiestRoom}>{analyticsData.busiestRoom}</div>
-                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.busiestRoomHours > 0 ? `${analyticsData.busiestRoomHours} ${t.hoursBookedLabel}` : t.noReservations}</div>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-              <div className="p-3 rounded-lg bg-indigo-50 text-indigo-600">
-                <Clock className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.peakActiveTime}</div>
-                <div className="text-2xl font-bold text-slate-800">
-                  {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : t.none}
-                </div>
-                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.peakCount > 0 ? `${analyticsData.peakCount} ${t.overlappingBookings}` : t.noOverlappingBookings}</div>
-              </div>
-            </div>
-
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-              <div className="p-3 rounded-lg bg-emerald-50 text-emerald-600">
-                <TrendingUp className="w-6 h-6" />
-              </div>
-              <div>
-                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
-                <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
-                  {analyticsData.departmentData[0] ? formatDepartment(analyticsData.departmentData[0].name) : t.none}
-                </div>
-                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Dual Column Chart lists */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Left Column: Room Occupancy Rates */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-slate-800">
-              <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
-                <Sparkles className="w-4 h-4 mr-2 text-yellow-500" />
-                {t.occupancyLoadHeader}
-              </h4>
-              <p className="text-xs text-slate-400 mb-6 font-semibold">{t.occupancyLoadSub}</p>
-
-              <div className="space-y-4">
-                {analyticsData.roomStats.map(item => (
-                  <div key={item.room.id} className="space-y-1.5">
-                    <div className="flex justify-between items-center text-xs font-bold text-slate-705">
-                      <span>{item.room.name} ({getRoomTypeLabel(item.room.type)})</span>
-                      <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {t.hoursShort})</span>
-                    </div>
-                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${item.occupancyRate >= 80
-                            ? 'bg-red-500'
-                            : item.occupancyRate >= 50
-                              ? 'bg-amber-500'
-                              : 'bg-brand-500'
-                          }`}
-                        style={{ width: `${item.occupancyRate}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Right Column: Department share */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between text-slate-800">
-              <div>
-                <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
-                  <Users className="w-4 h-4 mr-2 text-indigo-500" />
-                  {t.deptVolumeHeader}
-                </h4>
-                <p className="text-xs text-slate-400 mb-6 font-semibold">{t.deptVolumeSub}</p>
-
-                {analyticsData.departmentData.length === 0 ? (
-                  <div className="text-center py-8 text-slate-400 text-sm italic font-bold">{t.noDeptBookings}</div>
-                ) : (
-                  <div className="space-y-4">
-                    {analyticsData.departmentData.map((dept, index) => (
-                      <div key={dept.name} className="space-y-1.5">
-                        <div className="flex justify-between items-center text-xs font-bold text-slate-707">
-                          <span className="flex items-center">
-                            <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
-                            {formatDepartment(dept.name)}
-                          </span>
-                          <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.hours} {t.hoursShort}) ({dept.pct}%)</span>
-                        </div>
-                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                          <div
-                            className="h-full rounded-full transition-all duration-300"
-                            style={{
-                              width: `${dept.pct}%`,
-                              backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)`
-                            }}
-                          />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="p-3 bg-indigo-50/50 border border-indigo-150 rounded-xl mt-6 text-[11px] text-slate-600 flex items-start font-medium">
-                <AlertCircle className="w-4 h-4 mr-2 text-indigo-500 flex-shrink-0 mt-0.5" />
-                <span>{t.insightsFooter}</span>
-              </div>
-            </div>
-          </div>
-
+          {/* Booking History Table Section */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
             <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
@@ -1901,7 +1808,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     }}
                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
                   >
-                    <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Years'}</option>
+                    <option value="all">{language === 'th' ? 'ทั้งหมด' : 'All Years'}</option>
                     {availableYears.map(yr => (
                       <option key={yr} value={yr}>{yr}</option>
                     ))}
@@ -1916,7 +1823,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     disabled={historyFilterYear === 'all'}
                     className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-50 disabled:text-slate-400 shadow-sm"
                   >
-                    <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Months'}</option>
+                    <option value="all">{language === 'th' ? 'ทั้งหมด' : 'All Months'}</option>
                     {(language === 'th' ? MONTHS_TH : MONTHS_EN).map((m, idx) => (
                       <option key={idx} value={idx + 1}>{m}</option>
                     ))}
@@ -1960,9 +1867,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   </button>
                 </div>
 
+                {/* Second Row - Room Filter starts directly below Year filter on desktop */}
+                <div className="sm:col-span-4 mt-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'กรองตามห้อง' : 'Filter by Room'}</label>
+                  <select
+                    value={historyFilterRoom}
+                    onChange={(e) => setHistoryFilterRoom(e.target.value)}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                  >
+                    <option value="all">{language === 'th' ? 'ห้องทั้งหมด' : 'All Rooms'}</option>
+                    {rooms.map(r => (
+                      <option key={r.id} value={r.id}>{r.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Spacer for desktop to align properly */}
+                <div className="hidden sm:block sm:col-span-8"></div>
+
                 <div className="sm:col-span-12 text-xs font-bold text-slate-500 pt-1">
                   {(() => {
                     const segments: string[] = [];
+
+                    if (historyFilterRoom !== 'all') {
+                      const roomName = getRoomName(historyFilterRoom);
+                      segments.push(language === 'th'
+                        ? `ห้อง: ${roomName}`
+                        : `Room: ${roomName}`);
+                    }
 
                     if (historyFilterDay) {
                       segments.push(language === 'th'
@@ -2081,6 +2013,134 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </table>
             </div>
           </div>
+
+          {/* Metrics Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-brand-50 text-brand-600">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalBookingsHeader}</div>
+                <div className="text-2xl font-bold text-slate-800">{analyticsData.totalBookings}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{language === 'th' ? 'รายการทั้งหมดในระบบ' : 'all records in the system'}</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-orange-50 text-orange-600">
+                <Flame className="w-6 h-6 animate-pulse" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.busiestRoomHeader}</div>
+                <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]" title={analyticsData.busiestRoom}>{analyticsData.busiestRoom}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.busiestRoomHours > 0 ? `${analyticsData.busiestRoomHours} ${t.hoursBookedLabel}` : t.noReservations}</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-indigo-50 text-indigo-600">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.peakActiveTime}</div>
+                <div className="text-2xl font-bold text-slate-800">
+                  {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : t.none}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.peakCount > 0 ? `${analyticsData.peakCount} ${t.overlappingBookings}` : t.noOverlappingBookings}</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-emerald-50 text-emerald-600">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
+                <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
+                  {analyticsData.departmentData[0] ? formatDepartment(analyticsData.departmentData[0].name) : t.none}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Dual Column Chart lists */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column: Room Occupancy Rates */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-slate-800">
+              <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
+                <Sparkles className="w-4 h-4 mr-2 text-yellow-500" />
+                {t.occupancyLoadHeader}
+              </h4>
+              <p className="text-xs text-slate-400 mb-6 font-semibold">{t.occupancyLoadSub}</p>
+
+              <div className="space-y-4">
+                {analyticsData.roomStats.map(item => (
+                  <div key={item.room.id} className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-bold text-slate-705">
+                      <span>{item.room.name} ({getRoomTypeLabel(item.room.type)})</span>
+                      <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {t.hoursShort})</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${item.occupancyRate >= 80
+                          ? 'bg-red-500'
+                          : item.occupancyRate >= 50
+                            ? 'bg-amber-500'
+                            : 'bg-brand-500'
+                          }`}
+                        style={{ width: `${item.occupancyRate}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Right Column: Department share */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between text-slate-800">
+              <div>
+                <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
+                  <Users className="w-4 h-4 mr-2 text-indigo-500" />
+                  {t.deptVolumeHeader}
+                </h4>
+                <p className="text-xs text-slate-400 mb-6 font-semibold">{t.deptVolumeSub}</p>
+
+                {analyticsData.departmentData.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-sm italic font-bold">{t.noDeptBookings}</div>
+                ) : (
+                  <div className="space-y-4">
+                    {analyticsData.departmentData.map((dept, index) => (
+                      <div key={dept.name} className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-707">
+                          <span className="flex items-center">
+                            <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
+                            {formatDepartment(dept.name)}
+                          </span>
+                          <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.hours} {t.hoursShort}) ({dept.pct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${dept.pct}%`,
+                              backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-indigo-50/50 border border-indigo-150 rounded-xl mt-6 text-[11px] text-slate-600 flex items-start font-medium">
+                <AlertCircle className="w-4 h-4 mr-2 text-indigo-500 flex-shrink-0 mt-0.5" />
+                <span>{t.insightsFooter}</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2094,15 +2154,27 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               </h2>
               <p className="text-xs text-slate-500 font-medium mt-1">{t.emailHistorySub}</p>
             </div>
-            <button
-              type="button"
-              onClick={loadEmailHistory}
-              disabled={isEmailHistoryLoading}
-              className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-wait"
-            >
-              <RefreshCw className={`w-4 h-4 mr-2 ${isEmailHistoryLoading ? 'animate-spin' : ''}`} />
-              {t.refreshEmailHistory}
-            </button>
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={language === 'th' ? 'ค้นหาผู้รับ หัวข้อ หรือห้อง...' : 'Search recipient, subject, room...'}
+                  value={emailSearchTerm}
+                  onChange={(e) => setEmailSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={loadEmailHistory}
+                disabled={isEmailHistoryLoading}
+                className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-sm font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60 disabled:cursor-wait whitespace-nowrap"
+              >
+                <RefreshCw className={`w-4 h-4 mr-2 ${isEmailHistoryLoading ? 'animate-spin' : ''}`} />
+                {t.refreshEmailHistory}
+              </button>
+            </div>
           </div>
 
           {emailHistoryError && (
@@ -2137,15 +2209,21 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                       {t.noEmailHistory}
                     </td>
                   </tr>
+                ) : filteredEmailHistory.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">
+                      {language === 'th' ? 'ไม่พบข้อมูลประวัติการส่งอีเมลที่ค้นหา' : 'No matching email records found'}
+                    </td>
+                  </tr>
                 ) : (
-                  combinedEmailHistory.map((record) => {
+                  filteredEmailHistory.map((record) => {
                     const isQueuedStatus = record.status === 'queued';
                     const relatedBooking = record.relatedBookingTitle || record.relatedBookingId;
                     const relatedRoom = record.relatedRoomName || (record.relatedRoomId ? getRoomName(record.relatedRoomId) : '');
                     const purpose = record.purpose === 'Booking Verification'
                       ? t.bookingVerificationPurpose
                       : translateText(record.purpose, language);
-                    
+
                     const booking = bookings.find(b => b.id === record.relatedBookingId);
                     const verifiedStatus = getEmailHistoryVerificationStatus(record, booking);
 
@@ -2188,12 +2266,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                           {formatEmailSentAt(record.sentAt)}
                         </td>
                         <td className="px-6 py-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                              isQueuedStatus
-                                ? 'bg-amber-100 text-amber-700'
-                                : record.status === 'successful'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : 'bg-rose-100 text-rose-700'
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${isQueuedStatus
+                            ? 'bg-amber-100 text-amber-700'
+                            : record.status === 'successful'
+                              ? 'bg-emerald-100 text-emerald-700'
+                              : 'bg-rose-100 text-rose-700'
                             }`}>
                             {getEmailSentStatusLabel(record.status)}
                           </span>
@@ -2928,8 +3005,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     aria-invalid={Boolean(newUserFormErrors.password)}
                     aria-describedby={newUserFormErrors.password ? 'new-admin-password-error' : undefined}
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${newUserFormErrors.password
-                        ? 'border-rose-300 focus:ring-rose-500'
-                        : 'border-slate-300 focus:ring-brand-500'
+                      ? 'border-rose-300 focus:ring-rose-500'
+                      : 'border-slate-300 focus:ring-brand-500'
                       }`}
                     placeholder={t.passwordPlaceholder}
                   />
@@ -2964,8 +3041,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     aria-invalid={Boolean(newUserFormErrors.employeeId)}
                     aria-describedby={newUserFormErrors.employeeId ? 'new-admin-employee-id-error' : undefined}
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${newUserFormErrors.employeeId
-                        ? 'border-rose-300 focus:ring-rose-500'
-                        : 'border-slate-300 focus:ring-brand-500'
+                      ? 'border-rose-300 focus:ring-rose-500'
+                      : 'border-slate-300 focus:ring-brand-500'
                       }`}
                     placeholder={t.employeeIdPlaceholder}
                   />
@@ -2997,8 +3074,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                     aria-invalid={Boolean(newUserFormErrors.phone)}
                     aria-describedby={newUserFormErrors.phone ? 'new-admin-phone-error' : undefined}
                     className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${newUserFormErrors.phone
-                        ? 'border-rose-300 focus:ring-rose-500'
-                        : 'border-slate-300 focus:ring-brand-500'
+                      ? 'border-rose-300 focus:ring-rose-500'
+                      : 'border-slate-300 focus:ring-brand-500'
                       }`}
                     placeholder={t.deskPhonePlaceholder}
                   />
