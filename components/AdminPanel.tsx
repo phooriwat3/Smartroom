@@ -353,6 +353,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [emailSearchTerm, setEmailSearchTerm] = useState('');
+  const [emailDateFilter, setEmailDateFilter] = useState('');
   const [historyFilterYear, setHistoryFilterYear] = useState<string>('all');
   const [historyFilterMonth, setHistoryFilterMonth] = useState<string>('all');
   const [historyFilterDay, setHistoryFilterDay] = useState<string>('');
@@ -939,30 +940,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const filteredEmailHistory = useMemo(() => {
     const term = emailSearchTerm.trim().toLowerCase();
-    if (!term) return combinedEmailHistory;
+    
+    let result = combinedEmailHistory;
+    if (term) {
+      result = result.filter(record => {
+        const recipientName = (record.recipientName || '').toLowerCase();
+        const recipientEmail = (record.recipientEmail || '').toLowerCase();
+        const subject = (record.subject || '').toLowerCase();
+        const purpose = (record.purpose || '').toLowerCase();
+        const relatedBookingTitle = (record.relatedBookingTitle || '').toLowerCase();
+        const relatedRoomName = (record.relatedRoomName || '').toLowerCase();
+        const relatedRoomId = (record.relatedRoomId || '').toLowerCase();
+        const relatedBookingId = (record.relatedBookingId || '').toLowerCase();
 
-    return combinedEmailHistory.filter(record => {
-      const recipientName = (record.recipientName || '').toLowerCase();
-      const recipientEmail = (record.recipientEmail || '').toLowerCase();
-      const subject = (record.subject || '').toLowerCase();
-      const purpose = (record.purpose || '').toLowerCase();
-      const relatedBookingTitle = (record.relatedBookingTitle || '').toLowerCase();
-      const relatedRoomName = (record.relatedRoomName || '').toLowerCase();
-      const relatedRoomId = (record.relatedRoomId || '').toLowerCase();
-      const relatedBookingId = (record.relatedBookingId || '').toLowerCase();
+        return (
+          recipientName.includes(term) ||
+          recipientEmail.includes(term) ||
+          subject.includes(term) ||
+          purpose.includes(term) ||
+          relatedBookingTitle.includes(term) ||
+          relatedRoomName.includes(term) ||
+          relatedRoomId.includes(term) ||
+          relatedBookingId.includes(term)
+        );
+      });
+    }
 
-      return (
-        recipientName.includes(term) ||
-        recipientEmail.includes(term) ||
-        subject.includes(term) ||
-        purpose.includes(term) ||
-        relatedBookingTitle.includes(term) ||
-        relatedRoomName.includes(term) ||
-        relatedRoomId.includes(term) ||
-        relatedBookingId.includes(term)
-      );
-    });
-  }, [combinedEmailHistory, emailSearchTerm]);
+    if (emailDateFilter) {
+      result = result.filter(record => {
+        if (!record.sentAt) return false;
+        const recordDate = record.sentAt instanceof Date ? record.sentAt : new Date(record.sentAt);
+        if (Number.isNaN(recordDate.getTime())) return false;
+        
+        const year = recordDate.getFullYear();
+        const month = String(recordDate.getMonth() + 1).padStart(2, '0');
+        const day = String(recordDate.getDate()).padStart(2, '0');
+        const recordDateStr = `${year}-${month}-${day}`;
+        return recordDateStr === emailDateFilter;
+      });
+    }
+
+    return result;
+  }, [combinedEmailHistory, emailSearchTerm, emailDateFilter]);
 
   const bookingMatchesHistoryDateFilter = (booking: Booking) => {
     const bookingDate = booking.startTime;
@@ -2216,7 +2235,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
               <p className="text-xs text-slate-500 font-medium mt-1">{t.emailHistorySub}</p>
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center gap-3">
-              <div className="relative w-full sm:w-64">
+              <div className="relative w-full sm:w-60">
                 <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
                 <input
                   type="text"
@@ -2225,6 +2244,25 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   onChange={(e) => setEmailSearchTerm(e.target.value)}
                   className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
                 />
+              </div>
+              <div className="relative w-full sm:w-44 flex items-center">
+                <Calendar className="absolute left-3 w-4 h-4 text-slate-400 pointer-events-none" />
+                <input
+                  type="date"
+                  value={emailDateFilter}
+                  onChange={(e) => setEmailDateFilter(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium text-slate-700 bg-white"
+                />
+                {emailDateFilter && (
+                  <button
+                    type="button"
+                    onClick={() => setEmailDateFilter('')}
+                    className="absolute right-2 text-slate-400 hover:text-slate-600 p-0.5"
+                    title={language === 'th' ? 'ล้างวันที่' : 'Clear Date'}
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
               <button
                 type="button"
