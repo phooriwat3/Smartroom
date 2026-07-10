@@ -23,7 +23,7 @@ import {
   Trash2,
   CheckCircle
 } from 'lucide-react';
-import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions } from '../translations';
+import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions, formatTimeRange } from '../translations';
 import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState } from '../bookingVisualStyles';
 import CheckInValidationModal from './CheckInValidationModal';
 import ConfirmationModal from './ConfirmationModal';
@@ -156,7 +156,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [emailConfirmModal, setEmailConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
-    message: string;
+    message: React.ReactNode;
     onConfirm: () => void;
   }>({
     isOpen: false,
@@ -589,12 +589,40 @@ const Dashboard: React.FC<DashboardProps> = ({
     const selectedEmail = getMailboxEmail(user);
     if (!selectedEmail) return;
 
+    const emailCard = (
+      <div className="mt-3 flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 shadow-sm text-left">
+        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#111827] text-sm font-black text-white shadow-sm">
+          {getMailboxInitials(user)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-bold text-slate-900">
+            {user.displayName || selectedEmail}
+          </div>
+          <div className="truncate text-xs font-medium text-slate-500 mt-0.5">
+            {selectedEmail}
+          </div>
+          {getMailboxRoleLine(user) && (
+            <div className="truncate text-xs font-bold uppercase tracking-wide text-indigo-600 mt-1">
+              {getMailboxRoleLine(user)}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
     setEmailConfirmModal({
       isOpen: true,
       title: language === 'th' ? 'ยืนยันอีเมลของคุณ' : 'Confirm Your Email',
-      message: language === 'th'
-        ? `นี่คืออีเมลของคุณใช่หรือไม่?\n${selectedEmail}\n\nกรุณาตรวจสอบให้แน่ใจว่าเป็นอีเมลของคุณเอง`
-        : `Is this your email?\n${selectedEmail}\n\nPlease check and confirm that this is your own email.`,
+      message: (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 font-medium leading-relaxed">
+            {language === 'th'
+              ? 'นี่คืออีเมลของคุณใช่หรือไม่? กรุณาตรวจสอบให้แน่ใจว่าเป็นอีเมลของคุณเอง'
+              : 'Is this your email? Please check and confirm that this is your own email.'}
+          </p>
+          {emailCard}
+        </div>
+      ),
       onConfirm: () => {
         setSelectedEmailUser(user);
         setEmail(selectedEmail);
@@ -751,12 +779,52 @@ const Dashboard: React.FC<DashboardProps> = ({
 
     setBookingError(null);
 
+    setIsSubmitting(true);
+    let verifiedEmailUser: YageoMailboxUser;
+    try {
+      verifiedEmailUser = await validateExactYageoMailbox(normalizedEmail);
+      setSelectedEmailUser(verifiedEmailUser);
+    } catch (err: any) {
+      setBookingError(err.message || 'Error validating email');
+      setIsSubmitting(false);
+      return;
+    }
+    setIsSubmitting(false);
+
+    const emailCard = (
+      <div className="mt-3 flex items-center gap-3.5 rounded-2xl border border-slate-200 bg-slate-50 p-3.5 shadow-sm text-left">
+        <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-[#111827] text-sm font-black text-white shadow-sm">
+          {getMailboxInitials(verifiedEmailUser)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-bold text-slate-900">
+            {verifiedEmailUser.displayName || getMailboxEmail(verifiedEmailUser)}
+          </div>
+          <div className="truncate text-xs font-medium text-slate-500 mt-0.5">
+            {getMailboxEmail(verifiedEmailUser)}
+          </div>
+          {getMailboxRoleLine(verifiedEmailUser) && (
+            <div className="truncate text-xs font-bold uppercase tracking-wide text-indigo-600 mt-1">
+              {getMailboxRoleLine(verifiedEmailUser)}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
     setEmailConfirmModal({
       isOpen: true,
       title: language === 'th' ? 'ยืนยันอีเมลของคุณ' : 'Verify Booker Email',
-      message: language === 'th'
-        ? `กรุณายืนยันว่านี่คืออีเมลของคุณจริงหรือไม่:\n${normalizedEmail}\n\n(หากไม่ใช่อีเมลของคุณ คุณจะไม่ได้รับอีเมลยืนยันการใช้ห้อง)`
-        : `Please confirm if this is your email address:\n${normalizedEmail}\n\n(If it is not your email, you will not receive the verification link.)`,
+      message: (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 font-medium leading-relaxed">
+            {language === 'th'
+              ? 'กรุณายืนยันว่านี่คืออีเมลของคุณจริงหรือไม่ (หากไม่ใช่อีเมลของคุณ คุณจะไม่ได้รับอีเมลยืนยันการใช้ห้อง)'
+              : 'Please confirm if this is your email address (If it is not your email, you will not receive the verification link.)'}
+          </p>
+          {emailCard}
+        </div>
+      ),
       onConfirm: () => {
         setEmailConfirmModal(prev => ({ ...prev, isOpen: false }));
         void executeSubmitBooking(normalizedEmail);
@@ -1215,11 +1283,15 @@ const Dashboard: React.FC<DashboardProps> = ({
                   <thead>
                     <tr className="bg-gradient-to-r from-cyan-50 via-sky-50 to-blue-50 border-b border-cyan-100">
                       <th className="px-4 py-4 text-left font-bold text-sky-900 w-44 sticky left-0 bg-cyan-50 z-10 shadow-sm md:shadow-none border-r border-cyan-100">{language === 'th' ? 'ห้อง' : 'Type of Room'}</th>
-                      {hours.map(h => (
-                        <th key={h} className="px-2 py-3 text-center font-mono text-xs text-sky-700 font-bold timeline-grid-slot">
-                          {formatTimeValue(h, language)}
-                        </th>
-                      ))}
+                      {hours.map(h => {
+                        const startStr = `${h.toString().padStart(2, '0')}:00`;
+                        const endStr = `${(h + 1).toString().padStart(2, '0')}:00`;
+                        return (
+                          <th key={h} className="px-1 py-3 text-center font-mono text-[10px] tracking-tighter text-sky-700 font-bold timeline-grid-slot whitespace-nowrap">
+                            {formatTimeRange(startStr, endStr, language)}
+                          </th>
+                        );
+                      })}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-150">
@@ -1416,8 +1488,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                 return (
                   <div key={hour} className="flex items-stretch group">
-                    <div className="w-14 sm:w-16 text-right text-[10px] font-mono text-slate-400 pr-2 py-1.5 font-bold flex-shrink-0 flex items-center justify-end">
-                      {formatTimeValue(hour, language)}
+                    <div className="w-28 sm:w-32 text-right text-[10px] font-mono text-slate-400 pr-2 py-1.5 font-bold flex-shrink-0 flex items-center justify-end whitespace-nowrap">
+                      {formatTimeRange(`${hour.toString().padStart(2, '0')}:00`, `${(hour + 1).toString().padStart(2, '0')}:00`, language)}
                     </div>
                     <div className="flex-grow relative min-h-[44px]">
                       <div

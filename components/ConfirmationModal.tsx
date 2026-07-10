@@ -4,7 +4,7 @@ import { AlertCircle, X } from 'lucide-react';
 interface ConfirmationModalProps {
   isOpen: boolean;
   title: string;
-  message: string;
+  message: React.ReactNode;
   confirmText?: string;
   cancelText?: string;
   isDanger?: boolean;
@@ -56,7 +56,7 @@ const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
           </div>
           <div className="flex-grow pt-1">
             <h3 className="text-lg font-bold text-slate-900 leading-snug">{title}</h3>
-            <p className="text-sm text-slate-500 mt-2 font-medium leading-relaxed whitespace-pre-line">{message}</p>
+            <div className="text-sm text-slate-500 mt-2 font-medium leading-relaxed whitespace-pre-line">{message}</div>
           </div>
         </div>
 

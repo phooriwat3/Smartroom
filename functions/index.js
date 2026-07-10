@@ -385,6 +385,10 @@ function getEmailFailureMessage(error) {
   if (error && error.details && typeof error.details.adminMessage === "string") {
     return error.details.adminMessage;
   }
+  if (error && error.details && typeof error.details.body === "string" && error.details.body.trim()) {
+    const statusPart = error.details.status ? `[HTTP ${error.details.status}] ` : "";
+    return `${statusPart}${error.message} Details: ${error.details.body}`;
+  }
   if (error && typeof error.message === "string") {
     return error.message;
   }
