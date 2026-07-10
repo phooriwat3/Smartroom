@@ -33,6 +33,7 @@ const DEPARTMENT_STYLES: Record<string, DepartmentBookingStyle> = {
   ta_mfg: { itemClass: '!bg-lime-50 !border-lime-300 !text-lime-950', badgeClass: '!bg-lime-100 !border-lime-300 !text-lime-800', dotClass: 'bg-lime-500' },
   sc: { itemClass: '!bg-green-50 !border-green-300 !text-green-950', badgeClass: '!bg-green-100 !border-green-300 !text-green-800', dotClass: 'bg-green-500' },
   it: { itemClass: 'booking-it-neon', badgeClass: 'booking-it-neon !border-cyan-300 !text-sky-950', dotClass: 'bg-cyan-500' },
+  te: { itemClass: '!bg-indigo-50 !border-indigo-300 !text-indigo-955', badgeClass: '!bg-indigo-100 !border-indigo-300 !text-indigo-900', dotClass: 'bg-indigo-500' },
 };
 
 const RAW_DEPARTMENT_ALIASES: Record<string, string> = {
@@ -48,6 +49,7 @@ const RAW_DEPARTMENT_ALIASES: Record<string, string> = {
   'ta mfg': 'ta_mfg', manufacturing: 'ta_mfg',
   sc: 'sc', 'supply chain': 'sc',
   it: 'it', 'information technology': 'it',
+  te: 'te',
 };
 
 const normalizeDepartmentText = (department?: string | null) => (
@@ -78,6 +80,7 @@ const DEPARTMENT_DARK_STYLES: Record<string, DepartmentBookingStyle> = {
   ta_mfg: { itemClass: '!bg-lime-300 !border-lime-400 !text-lime-950', badgeClass: '!bg-lime-400/80 !border-lime-500 !text-lime-955', dotClass: 'bg-lime-500' },
   sc: { itemClass: '!bg-green-300 !border-green-400 !text-green-950', badgeClass: '!bg-green-400/80 !border-green-500 !text-green-955', dotClass: 'bg-green-500' },
   it: { itemClass: '!bg-sky-300 !border-sky-400 !text-sky-950', badgeClass: '!bg-sky-400/80 !border-sky-500 !text-sky-905', dotClass: 'bg-sky-500' },
+  te: { itemClass: '!bg-indigo-300 !border-indigo-400 !text-indigo-955', badgeClass: '!bg-indigo-400/80 !border-indigo-500 !text-indigo-955', dotClass: 'bg-indigo-500' },
 };
 
 const DEFAULT_DARK_STYLE: DepartmentBookingStyle = {
