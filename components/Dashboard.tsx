@@ -1382,7 +1382,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                           </div>
                                         )}
                                         <div className="timeline-grid-purpose text-[9.5px] text-slate-700 font-bold bg-white/75 px-1.5 py-0.5 rounded border border-white/90 flex items-start w-full" title={translateText(booking.title, language) || '-'}>
-                                          <span className="text-[7.5px] text-slate-500/70 mr-1 shrink-0 uppercase font-black mt-[1.5px]">{language === 'th' ? 'งาน:' : 'Topic:'}</span>
+                                          <span className="text-[7.5px] text-slate-500/70 mr-1 shrink-0 uppercase font-black mt-[1.5px]">{language === 'th' ? 'จุดประสงค์:' : 'Purpose:'}</span>
                                           <span className="timeline-grid-purpose-track inline truncate font-black">
                                             {translateText(booking.title, language) || '-'}
                                           </span>
