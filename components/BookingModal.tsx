@@ -446,23 +446,6 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1.5 leading-snug">{t.department}</label>
-                                <div className="relative">
-                                    <Building2 className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                                    <select
-                                        required
-                                        value={department}
-                                        onChange={(e) => setDepartment(e.target.value)}
-                                        className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent appearance-none bg-white font-medium"
-                                    >
-                                        <option value="" disabled>{t.selectDeptOption}</option>
-                                        {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
-                                            <option key={value} value={value}>{label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                            <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1.5 leading-snug">
                                     {language === 'th' ? 'รหัสพนักงาน (ตัวเลข 7 หลัก)' : 'Employee ID (7 digits)'}
                                 </label>
@@ -477,6 +460,23 @@ const BookingModal: React.FC<BookingModalProps> = ({ room, existingBookings, isO
                                         className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent"
                                         placeholder="2606801"
                                     />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1.5 leading-snug">{t.department}</label>
+                                <div className="relative">
+                                    <Building2 className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                                    <select
+                                        required
+                                        value={department}
+                                        onChange={(e) => setDepartment(e.target.value)}
+                                        className="w-full pl-9 pr-3 py-2.5 text-base sm:text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent appearance-none bg-white font-medium"
+                                    >
+                                        <option value="" disabled>{t.selectDeptOption}</option>
+                                        {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                                            <option key={value} value={value}>{label}</option>
+                                        ))}
+                                    </select>
                                 </div>
                             </div>
                         </div>
