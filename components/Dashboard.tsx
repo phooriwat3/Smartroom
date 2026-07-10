@@ -359,7 +359,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (state === 'noCheckIn') return 'bg-rose-100 text-rose-800 border-rose-200';
     if (state === 'pending') return 'bg-orange-100 text-orange-800 border-orange-200';
 
-    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department, context ? { context } : undefined) : '';
+    const departmentBadgeClass = (context === 'timeline' && department) ? getBookingDepartmentBadgeClass(department, { context }) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900 border-sky-200'} animate-pulse`;
     if (departmentBadgeClass) return departmentBadgeClass;
     if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-200';
@@ -1510,7 +1510,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             });
                           }
                         }}
-                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department, { context: 'timeline' }) : ''}
+                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department) : ''}
                           ${status === 'occupied'
                             ? isNoCheckInStatus
                               ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold cursor-not-allowed'
@@ -1542,7 +1542,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {booking?.organizer || '-'}
                             </span>
                             {booking && (
-                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
+                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
                                 {getBookingDisplayLabel(booking)}
                               </span>
                             )}
