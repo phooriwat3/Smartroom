@@ -61,6 +61,7 @@ const INTERNAL_TOOL_HTTPS_OPTIONS = {
 const INTERNAL_TOOL_EMAIL_HTTPS_OPTIONS = {
   ...APP_HTTPS_OPTIONS,
   cors: true,
+  secrets: [POWER_AUTOMATE_VERIFICATION_FLOW_URL],
 };
 const USER_LOOKUP_HTTPS_OPTIONS = {
   ...APP_HTTPS_OPTIONS,
@@ -464,6 +465,23 @@ async function sendPowerAutomateEmail(payload) {
   }
 
   const responseBody = await response.text().catch(() => "");
+  const parsedResponseBody = parseJsonText(responseBody);
+  if (parsedResponseBody && typeof parsedResponseBody === "object" && Array.isArray(parsedResponseBody.users)) {
+    const details = {
+      code: "email-service-wrong-flow",
+      adminMessage: "POWER_AUTOMATE_VERIFICATION_FLOW_URL is pointing to the mailbox lookup flow instead of the verification email flow.",
+      setup: "Set Firebase Functions secret POWER_AUTOMATE_VERIFICATION_FLOW_URL to the Power Automate HTTP trigger URL that sends email, then redeploy functions.",
+    };
+    console.error("Power Automate email flow returned a mailbox lookup response", {
+      payload: {
+        to: requestPayload.to,
+        subject: requestPayload.subject,
+        senderName: requestPayload.senderName,
+      },
+    });
+    throw new HttpsError("failed-precondition", "Verification email service is configured to the wrong Power Automate flow.", details);
+  }
+
   console.log("Power Automate email flow accepted request", {
     status: response.status,
     statusText: response.statusText,
@@ -2270,7 +2288,7 @@ async function runInternalAdminToolByName(tool, payload, data) {
   throw new HttpsError("invalid-argument", `Unsupported internal admin tool: ${tool}`);
 }
 
-exports.runInternalAdminTool = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+exports.runInternalAdminTool = onCall(INTERNAL_TOOL_EMAIL_HTTPS_OPTIONS, async (request) => {
   try {
     const data = request.data || {};
     await assertAdminAccess(request, data);
