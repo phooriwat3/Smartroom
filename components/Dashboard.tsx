@@ -1655,6 +1655,16 @@ const Dashboard: React.FC<DashboardProps> = ({
                     )}
                   </div>
 
+                  {/* Admin cancellation instruction banner */}
+                  <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl text-[11.5px] text-rose-700 flex items-start font-bold">
+                    <AlertCircle className="w-4 h-4 mr-2 text-rose-500 flex-shrink-0 mt-0.5 animate-pulse" />
+                    <span>
+                      {language === 'th'
+                        ? '💡 หากต้องการยกเลิกหรือเเก้ไขการจอง กรุณาติดต่อหมายเลข 9'
+                        : '💡 To cancel or edit a booking, please call Information at extension 9.'}
+                    </span>
+                  </div>
+
                   {/* Action Button */}
                   {isRoomClosedAllDay(selectedRoom, dateStr, liveTime).closed ? (
                     <div className="p-3 bg-slate-100 border border-slate-300 text-slate-700 text-center rounded-lg text-xs font-bold">
@@ -1761,15 +1771,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                   })}
                 </div>
               )}
-              {/* Admin cancellation instruction banner */}
-              <div className="p-3 bg-rose-50 border border-rose-100 rounded-xl mt-4 text-[11.5px] text-rose-700 flex items-start font-bold">
-                <AlertCircle className="w-4 h-4 mr-2 text-rose-500 flex-shrink-0 mt-0.5 animate-pulse" />
-                <span>
-                  {language === 'th'
-                    ? '💡 หากต้องการยกเลิกหรือเเก้ไขการจอง กรุณาติดต่อหมายเลข 9'
-                    : '💡 To cancel or edit a booking, please call Information at extension 9.'}
-                </span>
-              </div>
             </div>
           </div>
         </div>
