@@ -405,13 +405,34 @@ function getEmailFailureMessage(error) {
 
 async function sendPowerAutomateEmail(payload) {
   const flowUrl = getPowerAutomateFlowUrl();
+  const to = payload.to || payload.email || payload.recipientEmail || payload.recipient || "";
+  const subject = payload.subject || "";
+  const htmlBody = payload.message || payload.body || payload.html || "";
+  const requestPayload = {
+    ...payload,
+    to,
+    email: to,
+    recipient: to,
+    recipientEmail: to,
+    To: to,
+    Email: to,
+    RecipientEmail: to,
+    subject,
+    Subject: subject,
+    body: htmlBody,
+    html: htmlBody,
+    message: htmlBody,
+    Body: htmlBody,
+    Html: htmlBody,
+    Message: htmlBody,
+  };
 
   let response;
   try {
     response = await fetch(flowUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestPayload),
     });
   } catch (error) {
     console.error("Power Automate email flow request failed", {
@@ -433,13 +454,32 @@ async function sendPowerAutomateEmail(payload) {
     console.error("Power Automate email flow failed", {
       ...details,
       payload: {
-        to: payload.to,
-        subject: payload.subject,
-        senderName: payload.senderName,
+        to: requestPayload.to,
+        subject: requestPayload.subject,
+        senderName: requestPayload.senderName,
       },
     });
     throw new HttpsError("unavailable", "Power Automate email flow did not accept the request.", details);
   }
+
+  const responseBody = await response.text().catch(() => "");
+  console.log("Power Automate email flow accepted request", {
+    status: response.status,
+    statusText: response.statusText,
+    responseBody: responseBody.slice(0, 500),
+    payload: {
+      to: requestPayload.to,
+      subject: requestPayload.subject,
+      senderName: requestPayload.senderName,
+      bodyLength: htmlBody.length,
+    },
+  });
+
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    responseBody: responseBody.slice(0, 1000),
+  };
 }
 
 function parseJsonText(value) {
