@@ -52,37 +52,45 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #94a3b8; 
       }
-      @keyframes itRgbNeonShift {
-        0%   { background-position: 0% 50%;   box-shadow: 0 0 10px 2px rgba(0,245,255,0.9), 0 0 30px 6px rgba(0,245,255,0.55), 0 0 60px 12px rgba(0,200,255,0.3); border-color: #00f5ff !important; }
-        16%  { background-position: 20% 50%;  box-shadow: 0 0 10px 2px rgba(0,128,255,0.9), 0 0 30px 6px rgba(0,100,255,0.55), 0 0 60px 12px rgba(0,80,255,0.3);  border-color: #0066ff !important; }
-        33%  { background-position: 40% 50%;  box-shadow: 0 0 10px 2px rgba(160,32,240,0.9), 0 0 30px 6px rgba(140,0,255,0.55), 0 0 60px 12px rgba(120,0,255,0.3); border-color: #a020f0 !important; }
-        50%  { background-position: 60% 50%;  box-shadow: 0 0 10px 2px rgba(255,0,200,0.9), 0 0 30px 6px rgba(255,0,180,0.55), 0 0 60px 12px rgba(255,0,150,0.3);  border-color: #ff00cc !important; }
-        66%  { background-position: 80% 50%;  box-shadow: 0 0 10px 2px rgba(255,60,0,0.9),  0 0 30px 6px rgba(255,80,0,0.55),  0 0 60px 12px rgba(255,100,0,0.3);  border-color: #ff3c00 !important; }
-        83%  { background-position: 90% 50%;  box-shadow: 0 0 10px 2px rgba(0,255,80,0.9),  0 0 30px 6px rgba(0,255,100,0.55), 0 0 60px 12px rgba(0,255,120,0.3);  border-color: #00ff50 !important; }
-        100% { background-position: 100% 50%; box-shadow: 0 0 10px 2px rgba(0,245,255,0.9), 0 0 30px 6px rgba(0,245,255,0.55), 0 0 60px 12px rgba(0,200,255,0.3); border-color: #00f5ff !important; }
+      @keyframes itRgbGlow {
+        0%   { box-shadow: 0 0 8px 2px #00f5ff, 0 0 22px 5px #00f5ff88, 0 0 50px 10px #00f5ff33; outline-color: #00f5ff; }
+        14%  { box-shadow: 0 0 8px 2px #0055ff, 0 0 22px 5px #0055ff88, 0 0 50px 10px #0055ff33; outline-color: #0055ff; }
+        28%  { box-shadow: 0 0 8px 2px #aa00ff, 0 0 22px 5px #aa00ff88, 0 0 50px 10px #aa00ff33; outline-color: #aa00ff; }
+        42%  { box-shadow: 0 0 8px 2px #ff00cc, 0 0 22px 5px #ff00cc88, 0 0 50px 10px #ff00cc33; outline-color: #ff00cc; }
+        57%  { box-shadow: 0 0 8px 2px #ff3300, 0 0 22px 5px #ff330088, 0 0 50px 10px #ff330033; outline-color: #ff3300; }
+        71%  { box-shadow: 0 0 8px 2px #ffcc00, 0 0 22px 5px #ffcc0088, 0 0 50px 10px #ffcc0033; outline-color: #ffcc00; }
+        85%  { box-shadow: 0 0 8px 2px #00ff44, 0 0 22px 5px #00ff4488, 0 0 50px 10px #00ff4433; outline-color: #00ff44; }
+        100% { box-shadow: 0 0 8px 2px #00f5ff, 0 0 22px 5px #00f5ff88, 0 0 50px 10px #00f5ff33; outline-color: #00f5ff; }
       }
-      @keyframes itRgbNeonSweep {
-        0%   { transform: translateX(-160%) skewX(-20deg); opacity: 0; }
-        18%  { opacity: 0.85; }
-        48%  { transform: translateX(160%) skewX(-20deg); opacity: 0; }
-        100% { transform: translateX(160%) skewX(-20deg); opacity: 0; }
+      @keyframes itRgbSweep {
+        0%   { transform: translateX(-180%) skewX(-22deg); opacity: 0; }
+        15%  { opacity: 0.9; }
+        45%  { transform: translateX(180%) skewX(-22deg); opacity: 0; }
+        100% { transform: translateX(180%) skewX(-22deg); opacity: 0; }
       }
-      @keyframes itRgbPulse {
-        0%, 100% { opacity: 1; }
-        50%       { opacity: 0.88; }
+      @keyframes itRgbBorder {
+        0%   { border-color: #00f5ff; }
+        14%  { border-color: #0055ff; }
+        28%  { border-color: #aa00ff; }
+        42%  { border-color: #ff00cc; }
+        57%  { border-color: #ff3300; }
+        71%  { border-color: #ffcc00; }
+        85%  { border-color: #00ff44; }
+        100% { border-color: #00f5ff; }
       }
       .booking-it-neon {
         position: relative;
         isolation: isolate;
-        overflow: hidden;
-        border-width: 2px !important;
-        background:
-          linear-gradient(135deg, rgba(0,10,25,0.95), rgba(0,8,30,0.93), rgba(5,0,30,0.92)) padding-box,
-          linear-gradient(90deg, #00f5ff, #0066ff, #a020f0, #ff00cc, #ff3c00, #00ff50, #00f5ff) border-box !important;
-        background-size: 100% 100%, 400% 400% !important;
-        color: #e0f8ff !important;
-        text-shadow: 0 0 8px rgba(0,245,255,0.9), 0 0 16px rgba(0,200,255,0.7);
-        animation: itRgbNeonShift 1.8s linear infinite, itRgbPulse 2.2s ease-in-out infinite;
+        overflow: visible !important;
+        background: linear-gradient(135deg, #000d1a 0%, #050010 50%, #0a0018 100%) !important;
+        border: 2px solid #00f5ff !important;
+        outline: 1.5px solid #00f5ff;
+        outline-offset: 1px;
+        color: #e0ffff !important;
+        text-shadow: 0 0 6px #00f5ff, 0 0 12px rgba(0,200,255,0.8);
+        animation:
+          itRgbGlow   1.6s linear infinite,
+          itRgbBorder 1.6s linear infinite;
       }
       .booking-it-neon::before {
         content: "";
@@ -92,24 +100,31 @@
         pointer-events: none;
         background: repeating-linear-gradient(
           0deg,
-          transparent,
+          transparent 0px,
           transparent 3px,
-          rgba(0,245,255,0.04) 3px,
-          rgba(0,245,255,0.04) 4px
+          rgba(0,245,255,0.05) 3px,
+          rgba(0,245,255,0.05) 4px
         );
       }
       .booking-it-neon::after {
         content: "";
         position: absolute;
-        inset: -60%;
+        inset: -80%;
         z-index: 0;
         pointer-events: none;
-        background: linear-gradient(90deg, transparent, rgba(0,245,255,0.35), rgba(255,255,255,0.5), rgba(0,245,255,0.35), transparent);
-        animation: itRgbNeonSweep 2.0s ease-in-out infinite;
+        background: linear-gradient(
+          90deg,
+          transparent 0%,
+          rgba(0,245,255,0.25) 30%,
+          rgba(255,255,255,0.55) 50%,
+          rgba(0,245,255,0.25) 70%,
+          transparent 100%
+        );
+        animation: itRgbSweep 1.8s ease-in-out infinite;
       }
       .booking-it-neon * {
-        color: inherit;
-        text-shadow: inherit;
+        color: inherit !important;
+        text-shadow: inherit !important;
       }
       .booking-it-neon > * {
         position: relative;
@@ -120,7 +135,9 @@
         .booking-it-neon::after,
         .booking-it-neon::before {
           animation: none !important;
-          box-shadow: 0 0 10px rgba(0,245,255,0.6) !important;
+          box-shadow: 0 0 12px rgba(0,245,255,0.7) !important;
+          border-color: #00f5ff !important;
+          outline-color: #00f5ff !important;
         }
       }
       .timeline-grid-scroll {

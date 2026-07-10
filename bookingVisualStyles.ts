@@ -80,7 +80,7 @@ const DEPARTMENT_DARK_STYLES: Record<string, DepartmentBookingStyle> = {
   qa:                { itemClass: '!bg-yellow-300 !border-yellow-400 !text-yellow-950',    badgeClass: '!bg-yellow-400/80 !border-yellow-500 !text-yellow-950',    dotClass: 'bg-yellow-500' }, // 60°  bright yellow
   ta_mfg:            { itemClass: '!bg-lime-300 !border-lime-400 !text-lime-950',          badgeClass: '!bg-lime-400/80 !border-lime-500 !text-lime-950',          dotClass: 'bg-lime-500' },   // 90°  yellow-green
   sc:                { itemClass: '!bg-green-300 !border-green-400 !text-green-950',       badgeClass: '!bg-green-400/80 !border-green-500 !text-green-950',       dotClass: 'bg-green-500' },  // 120° pure green
-  it:                { itemClass: '!bg-sky-300 !border-sky-400 !text-sky-950',             badgeClass: '!bg-sky-400/80 !border-sky-500 !text-sky-950',             dotClass: 'bg-sky-500' },    // 200° sky (IT=cloud)
+  it:                { itemClass: 'booking-it-neon',                                           badgeClass: 'booking-it-neon !border-cyan-400',                         dotClass: 'bg-cyan-400' },    // 🌈 RGB neon cycling
   te:                { itemClass: '!bg-pink-300 !border-pink-400 !text-pink-950',          badgeClass: '!bg-pink-400/80 !border-pink-500 !text-pink-950',          dotClass: 'bg-pink-500' },   // 325° warm pink (distinct from rose)
 };
 
