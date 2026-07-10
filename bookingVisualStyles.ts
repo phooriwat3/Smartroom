@@ -6,10 +6,16 @@ type DepartmentBookingStyle = {
   dotClass: string;
 };
 
+type DepartmentBookingStyleContext = 'timeline' | 'default';
+
+type DepartmentBookingStyleOptions = {
+  context?: DepartmentBookingStyleContext;
+};
+
 const DEFAULT_STYLE: DepartmentBookingStyle = {
-  itemClass: '!bg-slate-50 !border-slate-200 !text-slate-800',
-  badgeClass: '!bg-slate-100 !border-slate-200 !text-slate-700',
-  dotClass: 'bg-slate-500',
+  itemClass: '!bg-orange-100 !border-orange-300 !text-orange-950',
+  badgeClass: '!bg-orange-100 !border-orange-300 !text-orange-800',
+  dotClass: 'bg-orange-500',
 };
 
 const DEPARTMENT_STYLES: Record<string, DepartmentBookingStyle> = {
@@ -58,18 +64,25 @@ export const getDepartmentBookingStyleKey = (department?: string | null) => {
 };
 
 export const isItBookingDepartment = (department?: string | null) => getDepartmentBookingStyleKey(department) === 'it';
-export const getDepartmentBookingStyle = (department?: string | null): DepartmentBookingStyle => DEPARTMENT_STYLES[getDepartmentBookingStyleKey(department)] || DEFAULT_STYLE;
-export const getBookingDepartmentClass = (department?: string | null) => getDepartmentBookingStyle(department).itemClass;
-export const getBookingDepartmentBadgeClass = (department?: string | null) => getDepartmentBookingStyle(department).badgeClass;
-export const getBookingDepartmentDotClass = (department?: string | null) => getDepartmentBookingStyle(department).dotClass;
+export const getDepartmentBookingStyle = (
+  department?: string | null,
+  options: DepartmentBookingStyleOptions = {}
+): DepartmentBookingStyle => {
+  const styleKey = getDepartmentBookingStyleKey(department);
+  if (styleKey === 'it') return DEPARTMENT_STYLES.it;
+  return DEFAULT_STYLE;
+};
+export const getBookingDepartmentClass = (department?: string | null, options?: DepartmentBookingStyleOptions) => getDepartmentBookingStyle(department, options).itemClass;
+export const getBookingDepartmentBadgeClass = (department?: string | null, options?: DepartmentBookingStyleOptions) => getDepartmentBookingStyle(department, options).badgeClass;
+export const getBookingDepartmentDotClass = (department?: string | null, options?: DepartmentBookingStyleOptions) => getDepartmentBookingStyle(department, options).dotClass;
 export const shouldUseDepartmentBookingStyle = (state?: string) => (
   state !== 'pending' && state !== 'noCheckIn' && state !== 'rejected'
 );
 
-export const getBookingDepartmentClassForState = (state: string | undefined, department?: string | null) => (
-  shouldUseDepartmentBookingStyle(state) ? getBookingDepartmentClass(department) : ''
+export const getBookingDepartmentClassForState = (state: string | undefined, department?: string | null, options?: DepartmentBookingStyleOptions) => (
+  shouldUseDepartmentBookingStyle(state) ? getBookingDepartmentClass(department, options) : ''
 );
 
-export const getBookingDepartmentBadgeClassForState = (state: string | undefined, department?: string | null) => (
-  shouldUseDepartmentBookingStyle(state) ? getBookingDepartmentBadgeClass(department) : ''
+export const getBookingDepartmentBadgeClassForState = (state: string | undefined, department?: string | null, options?: DepartmentBookingStyleOptions) => (
+  shouldUseDepartmentBookingStyle(state) ? getBookingDepartmentBadgeClass(department, options) : ''
 );

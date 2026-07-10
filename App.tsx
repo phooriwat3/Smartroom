@@ -12,7 +12,7 @@ import { TRANSLATIONS, getEffectiveRoomStatus, isRoomClosureExpired, isRoomClose
 import { LayoutGrid, Calendar, BarChart3, Settings, Check, XCircle, AlertCircle, BookOpen, Menu, X } from 'lucide-react';
 import { TermsModal, AccessDeniedOverlay } from './components/TermsModal';
 import { UserGuideModal } from './components/UserGuideModal';
-import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
@@ -244,6 +244,7 @@ const SmartRoomApplication: React.FC = () => {
   }, [language]);
 
   const t = TRANSLATIONS[language];
+  const [dashboardActiveView, setDashboardActiveView] = useState<'status' | 'timeline'>('status');
 
   // --- DATABASE STATE (Real-time Firestore) ---
   const [rooms, setRooms] = useState<Room[]>([]);
@@ -513,12 +514,20 @@ const SmartRoomApplication: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // 2. Subscribe to Bookings
+  // 2. Subscribe to Bookings (optimized to last 30 days to optimize client-side sync)
   useEffect(() => {
-    const unsubscribe = onSnapshot(collection(db, 'bookings'), (snapshot) => {
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const bookingsQuery = query(
+      collection(db, 'bookings'),
+      where('endTime', '>=', thirtyDaysAgo)
+    );
+
+    const unsubscribe = onSnapshot(bookingsQuery, (snapshot) => {
       if (snapshot.empty) {
         const hasSeeded = localStorage.getItem('smartroom_bookings_seeded');
-        if (!hasSeeded) {
+        const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+        if (!hasSeeded && isLocal) {
           console.log("Bookings collection is empty, seeding defaults...");
           INITIAL_BOOKINGS_MOCK.forEach(async (b) => {
             try {
@@ -534,10 +543,9 @@ const SmartRoomApplication: React.FC = () => {
               console.error("Failed to seed booking to Firestore", b.id, e);
             }
           });
-          localStorage.setItem('smartroom_bookings_seeded', 'true');
-        } else {
-          setBookings([]);
         }
+        localStorage.setItem('smartroom_bookings_seeded', 'true');
+        setBookings([]);
       } else {
         localStorage.setItem('smartroom_bookings_seeded', 'true');
         const loadedBookings: Booking[] = [];
@@ -834,6 +842,21 @@ const SmartRoomApplication: React.FC = () => {
       try {
         handleFirestoreError(e, OperationType.UPDATE, `bookings/${id}`);
       } catch (loggingError) { }
+    }
+  };
+
+  const handleVerifyBooking = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'bookings', id), {
+        status: BookingStatus.VERIFIED,
+        verifiedAt: serverTimestamp(),
+        actualStartTime: serverTimestamp(),
+        verificationMethod: 'admin'
+      });
+      showNotification(language === 'th' ? 'ยืนยันการใช้งานห้องเรียบร้อยแล้ว' : 'Booking verified successfully', 'success');
+    } catch (e) {
+      console.error("Failed to verify booking:", e);
+      showNotification(language === 'th' ? `ยืนยันไม่สำเร็จ: ${e instanceof Error ? e.message : String(e)}` : `Verification failed: ${e instanceof Error ? e.message : String(e)}`, 'error');
     }
   };
 
@@ -1369,6 +1392,7 @@ const SmartRoomApplication: React.FC = () => {
             onUpdateBooking={handleUpdateBooking}
             onApproveBooking={handleApproveBooking}
             onRejectBooking={handleRejectBooking}
+            onVerifyBooking={handleVerifyBooking}
             onAddRoom={handleAddRoom}
             onUpdateRoom={handleUpdateRoom}
             onDeleteRoom={handleDeleteRoom}
@@ -1477,14 +1501,18 @@ const SmartRoomApplication: React.FC = () => {
           <div
             onClick={() => {
               navigateToView('dashboard');
+              setDashboardActiveView('status');
               setSelectedRoomId('ALL');
               setFilterType('All');
               setIsMobileDrawerOpen(false);
             }}
-            className="flex items-center space-x-2 text-brand-500 mb-6 transition-all cursor-pointer hover:opacity-85 active:scale-[0.99]"
+            className="flex items-center space-x-3 text-brand-500 mb-6 transition-all cursor-pointer hover:opacity-85 active:scale-[0.99]"
           >
-            <LayoutGrid className="w-8 h-8" />
-            <span className="text-xl font-bold tracking-tight">TOKIN Smart Room</span>
+            <img src="/favicon.png" alt="TOKIN Smart Room Logo" className="w-9 h-9 object-contain" />
+            <div className="flex flex-col">
+              <span className="text-xl font-extrabold tracking-tight leading-none text-brand-500">TOKIN</span>
+              <span className="text-xs font-bold tracking-wider text-slate-400 mt-1">Smart Room</span>
+            </div>
           </div>
 
           {/* Language Switcher */}
@@ -1510,6 +1538,7 @@ const SmartRoomApplication: React.FC = () => {
                 <button
                   onClick={() => {
                     navigateToView('dashboard');
+                    setDashboardActiveView('status');
                     setSelectedRoomId('ALL');
                     setIsMobileDrawerOpen(false);
                   }}
@@ -1648,6 +1677,8 @@ const SmartRoomApplication: React.FC = () => {
               onConfirmBooking={handleConfirmBooking}
               selectedRoomId={selectedRoomId}
               setSelectedRoomId={setSelectedRoomId}
+              activeView={dashboardActiveView}
+              onActiveViewChange={setDashboardActiveView}
             />
           )
         )}
@@ -1712,6 +1743,7 @@ const SmartRoomApplication: React.FC = () => {
                 onUpdateBooking={handleUpdateBooking}
                 onApproveBooking={handleApproveBooking}
                 onRejectBooking={handleRejectBooking}
+                onVerifyBooking={handleVerifyBooking}
                 onAddRoom={handleAddRoom}
                 onUpdateRoom={handleUpdateRoom}
                 onDeleteRoom={handleDeleteRoom}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord } from '../types';
+import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord, EmailSentStatus } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
 import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
@@ -60,7 +60,7 @@ export const hashPassword = async (password: string): Promise<string> => {
   ];
 
   let h0 = 0x6a09e667, h1 = 0xbb67ae85, h2 = 0x3c6ef372, h3 = 0xa54ff53a,
-      h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
+    h4 = 0x510e527f, h5 = 0x9b05688c, h6 = 0x1f83d9ab, h7 = 0x5be0cd19;
 
   const utf8 = [];
   for (let i = 0; i < password.length; i++) {
@@ -152,18 +152,44 @@ interface AdminPanelProps {
   loginPresentation?: 'page' | 'modal';
   onCancelLogin?: () => void;
   onLoginSuccess?: () => void;
+  onVerifyBooking?: (id: string) => void;
 }
 
-type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected';
+type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected' | 'noCheckIn';
+type EmailHistoryVerificationStatus = 'pendingSend' | 'waitForVerify' | 'notVerified' | 'verified' | 'na';
+
+const STATUS_LABEL_FALLBACKS = {
+  en: {
+    emailStatusSuccessful: 'Successful',
+    emailStatusFailed: 'Failed',
+    emailStatusQueued: 'Waiting to send',
+    verifiedYes: 'Verified',
+    verifiedNo: 'Not verified',
+    verifiedWait: 'Wait for Verify',
+    verifiedPendingSend: 'Waiting to send',
+    verifiedNA: '-'
+  },
+  th: {
+    emailStatusSuccessful: 'ส่งสำเร็จ',
+    emailStatusFailed: 'ส่งไม่สำเร็จ',
+    emailStatusQueued: 'รอส่ง',
+    verifiedYes: 'ยืนยันแล้ว',
+    verifiedNo: 'ไม่ยืนยัน',
+    verifiedWait: 'รอผู้ใช้งานยืนยัน',
+    verifiedPendingSend: 'รอส่ง',
+    verifiedNA: '-'
+  }
+} as const;
 
 
-const AdminPanel: React.FC<AdminPanelProps> = ({ 
-  rooms, 
-  bookings, 
+const AdminPanel: React.FC<AdminPanelProps> = ({
+  rooms,
+  bookings,
   onDeleteBooking,
   onUpdateBooking,
   onApproveBooking,
   onRejectBooking,
+  onVerifyBooking,
   onAddRoom,
   onUpdateRoom,
   onDeleteRoom,
@@ -178,6 +204,29 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   onLoginSuccess
 }) => {
   const t = TRANSLATIONS[language];
+  const statusLabelFallback = STATUS_LABEL_FALLBACKS[language];
+  const getStatusLabel = (key: keyof typeof STATUS_LABEL_FALLBACKS.en) => t[key] || statusLabelFallback[key];
+  const getEmailSentStatusLabel = (status: EmailSentStatus) => {
+    if (status === 'queued') return getStatusLabel('emailStatusQueued');
+    if (status === 'successful') return getStatusLabel('emailStatusSuccessful');
+    return getStatusLabel('emailStatusFailed');
+  };
+  const getEmailHistoryVerificationStatusLabel = (status: EmailHistoryVerificationStatus) => {
+    if (status === 'verified') return getStatusLabel('verifiedYes');
+    if (status === 'pendingSend') return getStatusLabel('verifiedPendingSend');
+    if (status === 'waitForVerify') return getStatusLabel('verifiedWait');
+    if (status === 'notVerified') return getStatusLabel('verifiedNo');
+    return getStatusLabel('verifiedNA');
+  };
+
+  // Periodic Clock state to refresh time-dependent displays in real-time
+  const [liveTime, setLiveTime] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setLiveTime(new Date());
+    }, 10000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Auth State
   const [localCurrentUser, setLocalCurrentUser] = useState<AdminUser | null>(null);
@@ -238,10 +287,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     return () => unsubscribe();
   }, [currentUser]);
-  
+
   // UI State
-  const [activeTab, setActiveTab ] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('analytics');
-  
+  const [activeTab, setActiveTab] = useState<'bookings' | 'rooms' | 'users' | 'analytics' | 'emails'>('analytics');
+
   const sortedRooms = useMemo(() => {
     const order: Record<string, number> = {
       [RoomType.MEETING]: 1,
@@ -255,7 +304,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       return a.name.localeCompare(b.name, language);
     });
   }, [rooms, language]);
-  
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -268,7 +317,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
   const [searchTerm, setSearchTerm] = useState('');
   const [historyFilterYear, setHistoryFilterYear] = useState<string>('all');
@@ -279,7 +328,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   // Modals
   const [isRoomModalOpen, setIsRoomModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
-  
+
   const [isUserModalOpen, setIsUserModalOpen] = useState(false);
   const [isAdminGuideOpen, setIsAdminGuideOpen] = useState(false);
   const [newUserForm, setNewUserForm] = useState({
@@ -334,7 +383,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     const hashed = await hashPassword(loginPassword);
-    
+
     try {
       let currentFirebaseUser = auth.currentUser;
       if (!currentFirebaseUser) {
@@ -369,104 +418,104 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
 
   const handleCreateUser = async (e: React.FormEvent) => {
-      e.preventDefault();
-      if (currentUser?.role !== 'SUPER_ADMIN') {
-          showNotification(t.onlySuperAdminsCanCreate, 'error');
-          return;
-      }
+    e.preventDefault();
+    if (currentUser?.role !== 'SUPER_ADMIN') {
+      showNotification(t.onlySuperAdminsCanCreate, 'error');
+      return;
+    }
 
-      const password = newUserForm.password.trim();
-      const employeeId = newUserForm.employeeId.trim();
-      const phone = newUserForm.phone.trim();
-      const passwordError = validatePassword(password) ? '' : passwordErrorMessage;
-      const employeeIdError = /^\d{7}$/.test(employeeId)
-        ? ''
-        : t.employeeIdSevenDigits;
-      const phoneError = /^\d{4}$/.test(phone)
-        ? ''
-        : t.deskPhoneFourDigits;
+    const password = newUserForm.password.trim();
+    const employeeId = newUserForm.employeeId.trim();
+    const phone = newUserForm.phone.trim();
+    const passwordError = validatePassword(password) ? '' : passwordErrorMessage;
+    const employeeIdError = /^\d{7}$/.test(employeeId)
+      ? ''
+      : t.employeeIdSevenDigits;
+    const phoneError = /^\d{4}$/.test(phone)
+      ? ''
+      : t.deskPhoneFourDigits;
 
-      if (passwordError || employeeIdError || phoneError) {
-          setNewUserFormErrors({ password: passwordError, employeeId: employeeIdError, phone: phoneError });
-          showNotification(passwordError || employeeIdError || phoneError, 'error');
-          return;
-      }
+    if (passwordError || employeeIdError || phoneError) {
+      setNewUserFormErrors({ password: passwordError, employeeId: employeeIdError, phone: phoneError });
+      showNotification(passwordError || employeeIdError || phoneError, 'error');
+      return;
+    }
+    setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
+
+    if (adminUsers.some(u => u.username === newUserForm.username)) {
+      showNotification(t.usernameExists, 'error');
+      return;
+    }
+
+    const hashedPassword = await hashPassword(password);
+    const newUserId = Math.random().toString(36).substr(2, 9);
+    const newUser: AdminUser = {
+      id: newUserId,
+      username: newUserForm.username,
+      password: hashedPassword,
+      role: newUserForm.role,
+      employeeId,
+      department: newUserForm.department,
+      phone
+    };
+
+    try {
+      await setDoc(doc(db, 'admins', newUserId), newUser);
+      setIsUserModalOpen(false);
+      setNewUserForm({ username: '', password: '', employeeId: '', phone: '', department: 'HR', role: 'APPROVER' });
       setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-
-      if (adminUsers.some(u => u.username === newUserForm.username)) {
-          showNotification(t.usernameExists, 'error');
-          return;
-      }
-      
-      const hashedPassword = await hashPassword(password);
-      const newUserId = Math.random().toString(36).substr(2, 9);
-      const newUser: AdminUser = {
-          id: newUserId,
-          username: newUserForm.username,
-          password: hashedPassword,
-          role: newUserForm.role,
-          employeeId,
-          department: newUserForm.department,
-          phone
-      };
-      
-      try {
-        await setDoc(doc(db, 'admins', newUserId), newUser);
-        setIsUserModalOpen(false);
-        setNewUserForm({ username: '', password: '', employeeId: '', phone: '', department: 'HR', role: 'APPROVER' });
-        setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-        showNotification(t.adminCreatedSuccess, 'success');
-      } catch (e) {
-        handleFirestoreError(e, OperationType.CREATE, `admins/${newUserId}`);
-      }
+      showNotification(t.adminCreatedSuccess, 'success');
+    } catch (e) {
+      handleFirestoreError(e, OperationType.CREATE, `admins/${newUserId}`);
+    }
   };
 
   const handleDeleteUser = async (id: string) => {
-      if (id === currentUser?.id) {
-          setConfirmModal({
-            isOpen: true,
-            title: t.actionRestricted,
-            message: t.cannotDeleteSelf,
-            isDanger: false,
-            confirmText: t.ok,
-            cancelText: t.close,
-            onConfirm: () => {
-              setConfirmModal(prev => ({ ...prev, isOpen: false }));
-            }
-          });
-          return;
-      }
+    if (id === currentUser?.id) {
       setConfirmModal({
         isOpen: true,
-        title: t.deleteAdminTitle,
-        message: t.confirmDeleteUser,
-        isDanger: true,
-        confirmText: t.deleteButton,
-        cancelText: t.cancel,
-        onConfirm: async () => {
-          try {
-            const deleteAdminAccount = httpsCallable(functions, 'deleteAdminAccount');
-            await deleteAdminAccount({ targetAdminDocId: id });
-            showNotification('Admin deleted successfully.', 'success');
-          } catch (e) {
-            const err = e as { code?: string; message?: string; details?: unknown };
-            const message = err?.message || String(e);
-            console.error('Delete failed', {
-              itemType: 'adminAccount',
-              collection: 'admins',
-              documentId: id,
-              code: err?.code || '',
-              message,
-              details: err?.details,
-            });
-            showNotification(`Admin delete failed: ${message}`, 'error');
-            try {
-              handleFirestoreError(e, OperationType.DELETE, `admins/${id}`);
-            } catch (loggingError) { }
-          }
+        title: t.actionRestricted,
+        message: t.cannotDeleteSelf,
+        isDanger: false,
+        confirmText: t.ok,
+        cancelText: t.close,
+        onConfirm: () => {
           setConfirmModal(prev => ({ ...prev, isOpen: false }));
         }
       });
+      return;
+    }
+    setConfirmModal({
+      isOpen: true,
+      title: t.deleteAdminTitle,
+      message: t.confirmDeleteUser,
+      isDanger: true,
+      confirmText: t.deleteButton,
+      cancelText: t.cancel,
+      onConfirm: async () => {
+        try {
+          const deleteAdminAccount = httpsCallable(functions, 'deleteAdminAccount');
+          await deleteAdminAccount({ targetAdminDocId: id });
+          showNotification('Admin deleted successfully.', 'success');
+        } catch (e) {
+          const err = e as { code?: string; message?: string; details?: unknown };
+          const message = err?.message || String(e);
+          console.error('Delete failed', {
+            itemType: 'adminAccount',
+            collection: 'admins',
+            documentId: id,
+            code: err?.code || '',
+            message,
+            details: err?.details,
+          });
+          showNotification(`Admin delete failed: ${message}`, 'error');
+          try {
+            handleFirestoreError(e, OperationType.DELETE, `admins/${id}`);
+          } catch (loggingError) { }
+        }
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
   const getRoomName = (roomId: string) => {
     return rooms.find(r => r.id === roomId)?.name || t.unknownRoom;
@@ -498,7 +547,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const closureEndTime = rawClosureEndTime > closureStartTime && rawClosureEndTime <= BOOKING_END_HOUR
       ? rawClosureEndTime
       : Math.min(Math.max(closureStartTime + 1, 12), BOOKING_END_HOUR);
-    setRoomForm({ 
+    setRoomForm({
       ...room,
       isClosed: room.isClosed || false,
       closureReason: room.closureReason || '',
@@ -555,7 +604,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const handleRoomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // Ensure Firebase auth session exists before save (attempt anonymous auth silently, but proceed anyway)
     if (!auth.currentUser) {
       try {
@@ -578,7 +627,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
 
     const amenities = amenitiesString.split(',').map(s => s.trim()).filter(s => s !== '');
-    
+
     const { id: _, ...restRoomForm } = roomForm;
     const closureDate = (roomForm.closureStartDate || '').trim();
     const closureStartTime = roomForm.closureStartTime !== undefined ? Number(roomForm.closureStartTime) : BOOKING_START_HOUR;
@@ -620,13 +669,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
     try {
       if (editingRoom) {
-        await onUpdateRoom({ 
-          ...editingRoom, 
-          ...restRoomForm, 
+        await onUpdateRoom({
+          ...editingRoom,
+          ...restRoomForm,
           ...closureData,
-          id: editingRoom.id, 
-          imageUrl: finalImageUrl, 
-          amenities 
+          id: editingRoom.id,
+          imageUrl: finalImageUrl,
+          amenities
         } as Room);
         showNotification(t.roomUpdatedSuccess, 'success');
       } else {
@@ -650,7 +699,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           const parsed = JSON.parse(errorDesc);
           errorDesc = parsed.error || errorDesc;
         }
-      } catch (ex) {}
+      } catch (ex) { }
 
       showNotification(t.roomSaveFailed.replace('{reason}', errorDesc || t.roomSaveFallbackReason), 'error');
     }
@@ -701,7 +750,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
 
   const analyticsData = useMemo(() => {
     const totalBookings = analyticsBookingsForDate.length;
-    
+
+    // Count unique days in the dataset
+    const uniqueDays = new Set<string>();
+    analyticsBookingsForDate.forEach(b => {
+      if (b.startTime) {
+        uniqueDays.add(new Date(b.startTime).toDateString());
+      }
+    });
+    const daysCount = uniqueDays.size || 1;
+
     // Occupied hours per room (assume standard 10-hour workday segment: 08:00 - 18:00)
     const roomStats = sortedRooms.map(room => {
       const roomBookings = analyticsBookingsForDate.filter(b => b.roomId === room.id);
@@ -710,9 +768,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         const diffMs = Math.max(0, b.endTime.getTime() - b.startTime.getTime());
         hoursBooked += diffMs / (1000 * 60 * 60);
       });
-      
-      const occupancyRate = totalBookings > 0 ? Math.round((roomBookings.length / totalBookings) * 100) : 0;
-      
+
+      // Workday is 10 hours. Total available workday hours = 10 * daysCount
+      const availableWorkdayHours = 10 * daysCount;
+      const occupancyRate = Math.min(100, Math.round((hoursBooked / availableWorkdayHours) * 100));
+
       return {
         room,
         bookingsCount: roomBookings.length,
@@ -725,16 +785,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const busiestRoom = busiestRoomObj && busiestRoomObj.hoursBooked > 0 ? busiestRoomObj.room.name : t.noBookings;
 
     // Department breakdown
-    const departmentCounts: Record<string, number> = {};
+    const departmentStats: Record<string, { count: number; hours: number }> = {};
     analyticsBookingsForDate.forEach(b => {
       const dept = b.department || 'Other';
-      departmentCounts[dept] = (departmentCounts[dept] || 0) + 1;
+      if (!departmentStats[dept]) {
+        departmentStats[dept] = { count: 0, hours: 0 };
+      }
+      departmentStats[dept].count += 1;
+      const diffMs = Math.max(0, b.endTime.getTime() - b.startTime.getTime());
+      departmentStats[dept].hours += diffMs / (1000 * 60 * 60);
     });
-    
-    const departmentData = Object.entries(departmentCounts).map(([name, count]) => ({
+
+    const departmentData = Object.entries(departmentStats).map(([name, stats]) => ({
       name,
-      count,
-      pct: totalBookings > 0 ? Math.round((count / totalBookings) * 100) : 0
+      count: stats.count,
+      hours: parseFloat(stats.hours.toFixed(1)),
+      pct: totalBookings > 0 ? Math.round((stats.count / totalBookings) * 100) : 0
     })).sort((a, b) => b.count - a.count);
 
     // Peak booking hour
@@ -785,7 +851,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     const currentYear = new Date().getFullYear();
     years.add(currentYear);
     years.add(currentYear - 1);
-    
+
     bookings.forEach(b => {
       if (b.startTime) {
         years.add(new Date(b.startTime).getFullYear());
@@ -793,6 +859,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     });
     return Array.from(years).sort((a, b) => b - a);
   }, [bookings]);
+
+  const combinedEmailHistory = useMemo(() => {
+    const list = [...emailHistory];
+
+    bookings.forEach((booking) => {
+      const isScheduledForSend = booking.status === BookingStatus.CONFIRMED && (
+        booking.verificationEmailStatus === 'queued' ||
+        booking.verificationEmailStatus === 'pending_retry' ||
+        booking.verificationEmailStatus === 'sending'
+      );
+
+      if (!isScheduledForSend) return;
+
+      const alreadySent = emailHistory.some(
+        (history) => history.relatedBookingId === booking.id && history.status === 'successful'
+      );
+      const alreadyListed = list.some(
+        (history) => history.relatedBookingId === booking.id && history.status === 'queued'
+      );
+
+      if (alreadySent || alreadyListed) return;
+
+      const scheduledDate = booking.verificationEmailScheduledAt || booking.startTime;
+      list.push({
+        id: `queued-${booking.id}`,
+        recipientEmail: booking.email || '',
+        recipientName: booking.organizer || '',
+        subject: `[TOKIN Smart Room] Please Verify Your Booking: ${booking.title}`,
+        purpose: 'Booking Verification',
+        sentAt: scheduledDate ? new Date(scheduledDate) : new Date(),
+        status: 'queued',
+        relatedBookingId: booking.id,
+        relatedBookingTitle: booking.title,
+        relatedRoomId: booking.roomId,
+        relatedRoomName: getRoomName(booking.roomId),
+      });
+    });
+
+    return list.sort((a, b) => b.sentAt.getTime() - a.sentAt.getTime());
+  }, [emailHistory, bookings, rooms]);
 
   const bookingMatchesHistoryDateFilter = (booking: Booking) => {
     const bookingDate = booking.startTime;
@@ -911,7 +1017,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (booking.status === BookingStatus.REJECTED || !booking.status) return 'rejected';
     if (booking.actualEndTime) return 'used';
 
-    const now = new Date().getTime();
+    const now = liveTime.getTime();
     const startTime = booking.startTime.getTime();
     const endTime = booking.endTime.getTime();
     const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
@@ -922,7 +1028,13 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       return 'verified';
     }
 
-    if (booking.status === BookingStatus.CONFIRMED) return 'waitForVerify';
+    if (booking.status === BookingStatus.CONFIRMED) {
+      const verifyCutoffTime = startTime + 15 * 60 * 1000;
+      const verifyStartTime = startTime - 15 * 60 * 1000;
+      if (now >= verifyStartTime && now <= verifyCutoffTime) return 'waitForVerify';
+      if (now > verifyCutoffTime) return 'noCheckIn';
+      return 'confirmed';
+    }
     return 'confirmed';
   };
 
@@ -934,12 +1046,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (state === 'roomInUse') return t.roomInUseStatus;
     if (state === 'used') return t.usedRoomStatus;
     if (state === 'rejected') return t.rejected;
-    return t.confirmed;
+    if (state === 'noCheckIn') return t.cancelledNoVerification;
+    return t.waitForVerify;
   };
 
   const getAdminBookingStatusClass = (state: AdminBookingDisplayState, department?: string) => {
     if (state === 'pending') return 'bg-orange-100 text-orange-700';
     if (state === 'rejected') return 'bg-red-100 text-red-700';
+    if (state === 'noCheckIn') return 'bg-rose-100 text-rose-805 ring-1 ring-rose-200';
 
     const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-blue-100 text-blue-700 ring-1 ring-blue-200'} animate-pulse`;
@@ -976,6 +1090,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     return `${formatDate(value, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} ${time}`;
   };
 
+  const getEmailHistoryVerificationStatus = (record: EmailSentHistoryRecord, booking?: Booking): EmailHistoryVerificationStatus => {
+    if (record.status === 'queued') return 'pendingSend';
+    if (!booking) return 'na';
+
+    const isVerified = booking.status === BookingStatus.VERIFIED || !!booking.verifiedAt || !!booking.actualStartTime;
+    if (isVerified) return 'verified';
+
+    if (record.status !== 'successful') return 'na';
+
+    const cutoffTime = booking.verificationWindowClosedAt
+      ? new Date(booking.verificationWindowClosedAt).getTime()
+      : new Date(booking.startTime).getTime() + 15 * 60 * 1000;
+
+    return liveTime.getTime() <= cutoffTime && booking.status === BookingStatus.CONFIRMED
+      ? 'waitForVerify'
+      : 'notVerified';
+  };
+
   const normalizeEmailHistoryRecord = (raw: any): EmailSentHistoryRecord => ({
     id: String(raw?.id || Math.random().toString(36).slice(2)),
     recipientEmail: String(raw?.recipientEmail || ''),
@@ -983,7 +1115,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     subject: String(raw?.subject || ''),
     purpose: String(raw?.purpose || ''),
     sentAt: parseHistoryDate(raw?.sentAt || raw?.createdAt),
-    status: raw?.status === 'failed' ? 'failed' : 'successful',
+    status: raw?.status === 'failed' ? 'failed' : raw?.status === 'queued' ? 'queued' : 'successful',
     relatedBookingId: String(raw?.relatedBookingId || ''),
     relatedBookingTitle: String(raw?.relatedBookingTitle || ''),
     relatedRoomId: String(raw?.relatedRoomId || ''),
@@ -1057,72 +1189,72 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   };
 
   const loginCard = (
-        <div className="relative bg-white p-8 rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm">
-          {loginPresentation === 'modal' && onCancelLogin && (
-            <button
-              type="button"
-              onClick={onCancelLogin}
-              className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
-              aria-label={t.close}
-            >
-              <X className="h-5 w-5" />
-            </button>
-          )}
-          <div className="text-center mb-6">
-            <div className="bg-brand-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-brand-500" />
-            </div>
-            <h2 className="text-2xl font-bold text-slate-900">{t.adminPortal}</h2>
-            <p className="text-slate-500 text-sm mt-2">{t.adminSignInSub}</p>
-          </div>
-          <form onSubmit={handleLogin} className="space-y-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-1">{t.username}</label>
-              <div className="relative">
-                <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                <input
-                    type="text"
-                    value={loginUsername}
-                    onChange={(e) => setLoginUsername(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all font-medium"
-                    placeholder={t.enterUsername}
-                />
-              </div>
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1 ml-1">{t.password}</label>
-              <div className="relative">
-                <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
-                <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all font-medium"
-                    placeholder={t.enterPassword}
-                />
-              </div>
-            </div>
-            {loginErrorMessage && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg font-medium">{loginErrorMessage}</p>}
-            <button
-              type="submit"
-              className="w-full bg-brand-500 text-white py-2.5 rounded-xl font-bold hover:bg-brand-600 transition-colors shadow-sm hover:shadow flex items-center justify-center"
-            >
-              <LogIn className="w-4 h-4 mr-2" />
-              {t.signIn}
-            </button>
-
-
-            {loginPresentation === 'modal' && onCancelLogin && (
-              <button
-                type="button"
-                onClick={onCancelLogin}
-                className="w-full border border-slate-200 text-slate-600 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-colors"
-              >
-                {t.cancel}
-              </button>
-            )}
-          </form>
+    <div className="relative bg-white p-8 rounded-2xl shadow-xl border border-slate-200 w-full max-w-sm">
+      {loginPresentation === 'modal' && onCancelLogin && (
+        <button
+          type="button"
+          onClick={onCancelLogin}
+          className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
+          aria-label={t.close}
+        >
+          <X className="h-5 w-5" />
+        </button>
+      )}
+      <div className="text-center mb-6">
+        <div className="bg-brand-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+          <Lock className="w-8 h-8 text-brand-500" />
         </div>
+        <h2 className="text-2xl font-bold text-slate-900">{t.adminPortal}</h2>
+        <p className="text-slate-500 text-sm mt-2">{t.adminSignInSub}</p>
+      </div>
+      <form onSubmit={handleLogin} className="space-y-4">
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1 ml-1">{t.username}</label>
+          <div className="relative">
+            <User className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              value={loginUsername}
+              onChange={(e) => setLoginUsername(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all font-medium"
+              placeholder={t.enterUsername}
+            />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-700 mb-1 ml-1">{t.password}</label>
+          <div className="relative">
+            <Lock className="absolute left-3 top-3 w-4 h-4 text-slate-400" />
+            <input
+              type="password"
+              value={loginPassword}
+              onChange={(e) => setLoginPassword(e.target.value)}
+              className="w-full pl-9 pr-4 py-2.5 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all font-medium"
+              placeholder={t.enterPassword}
+            />
+          </div>
+        </div>
+        {loginErrorMessage && <p className="text-red-500 text-sm text-center bg-red-50 p-2 rounded-lg font-medium">{loginErrorMessage}</p>}
+        <button
+          type="submit"
+          className="w-full bg-brand-500 text-white py-2.5 rounded-xl font-bold hover:bg-brand-600 transition-colors shadow-sm hover:shadow flex items-center justify-center"
+        >
+          <LogIn className="w-4 h-4 mr-2" />
+          {t.signIn}
+        </button>
+
+
+        {loginPresentation === 'modal' && onCancelLogin && (
+          <button
+            type="button"
+            onClick={onCancelLogin}
+            className="w-full border border-slate-200 text-slate-600 py-2.5 rounded-xl font-bold hover:bg-slate-50 transition-colors"
+          >
+            {t.cancel}
+          </button>
+        )}
+      </form>
+    </div>
   );
 
   if (!currentUser) {
@@ -1144,585 +1276,602 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
           {renderLanguageSwitcher()}
         </div>
         <div className="flex flex-wrap items-center justify-start sm:justify-end gap-3">
-            <div className="flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-white border border-slate-200 text-slate-700 shadow-sm">
-                <User className="w-4 h-4 mr-2 text-brand-500" />
-                {currentUser.username}
-            </div>
-            <div className={`flex items-center px-3 py-1.5 rounded-full text-sm font-semibold shadow-sm ${currentUser.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700 border border-brand-200' : 'bg-teal-100 text-teal-700 border border-teal-200'}`}>
-                {currentUser.role === 'SUPER_ADMIN' ? <ShieldCheck className="w-4 h-4 mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
-                {currentUser.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
-            </div>
-            <button
-                type="button"
-                onClick={() => setIsAdminGuideOpen(true)}
-                className="inline-flex items-center text-sm text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors font-semibold border border-brand-100 shadow-sm"
-            >
-                <BookOpen className="w-4 h-4 mr-1.5" />
-                {language === 'th' ? 'คู่มือแอดมิน' : 'Admin Guide'}
-            </button>
-            <button 
-                onClick={() => {
-                    updateCurrentUser(null);
-                    setLoginUsername('');
-                    setLoginPassword('');
-                    setLoginErrorKey('');
-                    onBackToUser?.();
-                }}
-                className="text-sm text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors font-semibold"
-            >
-                {t.logout}
-            </button>
+          <div className="flex items-center px-3 py-1.5 rounded-full text-sm font-semibold bg-white border border-slate-200 text-slate-700 shadow-sm">
+            <User className="w-4 h-4 mr-2 text-brand-500" />
+            {currentUser.username}
+          </div>
+          <div className={`flex items-center px-3 py-1.5 rounded-full text-sm font-semibold shadow-sm ${currentUser.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700 border border-brand-200' : 'bg-teal-100 text-teal-700 border border-teal-200'}`}>
+            {currentUser.role === 'SUPER_ADMIN' ? <ShieldCheck className="w-4 h-4 mr-2" /> : <Shield className="w-4 h-4 mr-2" />}
+            {currentUser.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsAdminGuideOpen(true)}
+            className="inline-flex items-center text-sm text-brand-600 hover:bg-brand-50 px-3 py-2 rounded-lg transition-colors font-semibold border border-brand-100 shadow-sm"
+          >
+            <BookOpen className="w-4 h-4 mr-1.5" />
+            {language === 'th' ? 'คู่มือแอดมิน' : 'Admin Guide'}
+          </button>
+          <button
+            onClick={() => {
+              updateCurrentUser(null);
+              setLoginUsername('');
+              setLoginPassword('');
+              setLoginErrorKey('');
+              onBackToUser?.();
+            }}
+            className="text-sm text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors font-semibold"
+          >
+            {t.logout}
+          </button>
         </div>
       </header>
 
       {/* Tabs */}
       <div className="flex space-x-1 bg-white p-1 rounded-xl border border-slate-200 w-fit overflow-x-auto">
         <button
-            onClick={() => setActiveTab('analytics')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'analytics' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+          onClick={() => setActiveTab('analytics')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'analytics' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
         >
-            <BarChart2 className="w-4 h-4 mr-2" />
-            {t.insightsStats}
+          <BarChart2 className="w-4 h-4 mr-2" />
+          {t.insightsStats}
         </button>
 
         <button
-            onClick={() => setActiveTab('emails')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'emails' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+          onClick={() => setActiveTab('emails')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'emails' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
         >
-            <Mail className="w-4 h-4 mr-2" />
-            {t.emailHistoryTab}
+          <Mail className="w-4 h-4 mr-2" />
+          {t.emailHistoryTab}
         </button>
-        
+
         {/* Room management is accessible to all admins */}
         <button
-            onClick={() => setActiveTab('rooms')}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'rooms' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+          onClick={() => setActiveTab('rooms')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all whitespace-nowrap ${activeTab === 'rooms' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
         >
-            {t.roomMgmtTab}
+          {t.roomMgmtTab}
         </button>
 
         {/* Only Super Admin can see User Management */}
         {currentUser.role === 'SUPER_ADMIN' && (
-            <button
-                onClick={() => setActiveTab('users')}
-                className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'users' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
-            >
-                <UserCog className="w-4 h-4 mr-2" />
-                {t.userMgmtTab}
-            </button>
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'users' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+          >
+            <UserCog className="w-4 h-4 mr-2" />
+            {t.userMgmtTab}
+          </button>
         )}
       </div>
 
       {activeTab === 'bookings' && (
         <>
-            {/* Stats Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <button
-                    type="button"
-                    onClick={() => setActiveTab('analytics')}
-                    className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 text-left transition-all hover:border-brand-300 hover:shadow-md active:scale-[0.99]"
-                >
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-slate-500 text-sm font-medium">{t.totalBookingsHeader}</span>
-                    <Calendar className="w-5 h-5 text-indigo-500 opacity-75" />
-                </div>
-                <p className="text-3xl font-bold text-slate-800">{bookings.length}</p>
-                <p className="text-[11px] text-brand-600 font-bold mt-2">{language === 'th' ? 'คลิกเพื่อดูสถิติและประวัติทั้งหมด' : 'View analytics and history'}</p>
-                </button>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-slate-500 text-sm font-medium">{t.activeRooms}</span>
-                    <LayoutGrid className="w-5 h-5 text-green-500 opacity-75" />
-                </div>
-                <p className="text-3xl font-bold text-slate-800">{rooms.length}</p>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-slate-500 text-sm font-medium">{t.upcomingToday}</span>
-                    <Calendar className="w-5 h-5 text-brand-500 opacity-75" />
-                </div>
-                <p className="text-3xl font-bold text-slate-800">
-                    {todayBookings.length}
-                </p>
-                </div>
+          {/* Stats Cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <button
+              type="button"
+              onClick={() => setActiveTab('analytics')}
+              className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 text-left transition-all hover:border-brand-300 hover:shadow-md active:scale-[0.99]"
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-500 text-sm font-medium">{t.totalBookingsHeader}</span>
+                <Calendar className="w-5 h-5 text-indigo-500 opacity-75" />
+              </div>
+              <p className="text-3xl font-bold text-slate-800">{bookings.length}</p>
+              <p className="text-[11px] text-brand-600 font-bold mt-2">{language === 'th' ? 'คลิกเพื่อดูสถิติและประวัติทั้งหมด' : 'View analytics and history'}</p>
+            </button>
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-500 text-sm font-medium">{t.activeRooms}</span>
+                <LayoutGrid className="w-5 h-5 text-green-500 opacity-75" />
+              </div>
+              <p className="text-3xl font-bold text-slate-800">{rooms.length}</p>
+            </div>
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-slate-500 text-sm font-medium">{t.upcomingToday}</span>
+                <Calendar className="w-5 h-5 text-brand-500 opacity-75" />
+              </div>
+              <p className="text-3xl font-bold text-slate-800">
+                {todayBookings.length}
+              </p>
+            </div>
+          </div>
+
+          {/* Booking Management Table */}
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <h2 className="font-bold text-slate-800">{language === 'th' ? 'รายการจองวันนี้' : 'Today Bookings'}</h2>
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder={t.searchPlaceholder}
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
+                />
+              </div>
             </div>
 
-            {/* Booking Management Table */}
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-center gap-4">
-                <h2 className="font-bold text-slate-800">{language === 'th' ? 'รายการจองวันนี้' : 'Today Bookings'}</h2>
-                <div className="relative w-full sm:w-64">
-                    <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                    <input
-                    type="text"
-                    placeholder={t.searchPlaceholder}
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
-                    />
-                </div>
-                </div>
-                
-                <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left">
-                    <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                  <tr>
+                    <th className="px-6 py-3">{t.room}</th>
+                    <th className="px-6 py-3">{t.dateTimeCol}</th>
+                    <th className="px-6 py-3">{t.eventCol}</th>
+                    <th className="px-6 py-3">{t.userCol}</th>
+                    <th className="px-6 py-3">{t.status}</th>
+                    <th className="px-6 py-3 text-right">{t.actionsCol}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {filteredBookings.length === 0 ? (
                     <tr>
-                        <th className="px-6 py-3">{t.room}</th>
-                        <th className="px-6 py-3">{t.dateTimeCol}</th>
-                        <th className="px-6 py-3">{t.eventCol}</th>
-                        <th className="px-6 py-3">{t.userCol}</th>
-                        <th className="px-6 py-3">{t.status}</th>
-                        <th className="px-6 py-3 text-right">{t.actionsCol}</th>
+                      <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">
+                        {t.noBookingsTable}
+                      </td>
                     </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 font-medium">
-                    {filteredBookings.length === 0 ? (
-                        <tr>
-                        <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">
-                            {t.noBookingsTable}
-                        </td>
-                        </tr>
-                    ) : (
-                        filteredBookings.map((booking) => {
-                            const displayState = getAdminBookingDisplayState(booking);
-                            return (
-                        <tr key={booking.id} className={`transition-colors ${getBookingDepartmentClassForState(displayState, booking.department)} hover:shadow-sm`}>
-                            <td className="px-6 py-4">
-                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">
-                                    {getRoomName(booking.roomId)}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4">
+                  ) : (
+                    filteredBookings.map((booking) => {
+                      const displayState = getAdminBookingDisplayState(booking);
+                      return (
+                        <tr key={booking.id} className="transition-colors hover:bg-slate-50 border-b border-slate-100 bg-white">
+                          <td className="px-6 py-4">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-brand-50 text-brand-700">
+                              {getRoomName(booking.roomId)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4">
                             <div className="font-semibold text-slate-900">
-                                {formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}
+                              {formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}
                             </div>
                             <div className="text-slate-500 text-xs font-semibold font-mono mt-0.5">
-                                {formatTimeRange(booking.startTime, booking.endTime, language)}
+                              {formatTimeRange(booking.startTime, booking.endTime, language)}
                             </div>
-                            </td>
-                            <td className="px-6 py-4 font-semibold text-slate-800">{translateText(booking.title, language)}</td>
-                            <td className="px-6 py-4 text-slate-500">
-                                <div className="flex flex-col space-y-1">
-                                    <div className="flex items-center">
-                                        <User className="w-3 h-3 mr-1.5 text-brand-500" />
-                                        {booking.organizer}
-                                    </div>
-                                    <div className="flex items-center text-xs text-slate-400">
-                                        <IdCard className="w-3 h-3 mr-1.5" />
-                                        {booking.employeeId || 'N/A'}
-                                    </div>
-                                    <div className="flex items-center text-xs text-slate-400">
-                                        <span className={`w-2 h-2 rounded-full mr-1.5 ${getBookingDepartmentDotClass(booking.department)}`}></span>
-                                        {formatDepartment(booking.department) || '-'}
-                                    </div>
-                                    {booking.deskNumber && (
-                                        <div className="flex items-center text-xs text-slate-400">
-                                            <span className="font-bold text-[10px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded mr-1.5 shrink-0">
-                                                {t.deskShort}
-                                            </span>
-                                            {booking.deskNumber}
-                                        </div>
-                                    )}
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-slate-800">{translateText(booking.title, language)}</td>
+                          <td className="px-6 py-4 text-slate-500">
+                            <div className="flex flex-col space-y-1">
+                              <div className="flex items-center">
+                                <User className="w-3 h-3 mr-1.5 text-brand-500" />
+                                {booking.organizer}
+                              </div>
+                              <div className="flex items-center text-xs text-slate-400">
+                                <IdCard className="w-3 h-3 mr-1.5" />
+                                {booking.employeeId || 'N/A'}
+                              </div>
+                              <div className="flex items-center text-xs text-slate-400">
+                                <span className={`w-2 h-2 rounded-full mr-1.5 ${getBookingDepartmentDotClass(booking.department)}`}></span>
+                                {formatDepartment(booking.department) || '-'}
+                              </div>
+                              {booking.deskNumber && (
+                                <div className="flex items-center text-xs text-slate-400">
+                                  <span className="font-bold text-[10px] bg-slate-100 text-slate-600 px-1 py-0.2 rounded mr-1.5 shrink-0">
+                                    {t.deskShort}
+                                  </span>
+                                  {booking.deskNumber}
                                 </div>
-                            </td>
-                            <td className="px-6 py-4 mr-0">
-                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState, booking.department)}`}>
-                                    {getAdminBookingStatusLabel(booking)}
-                                </span>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                                <div className="flex items-center justify-end space-x-2">
-                                    {booking.status === BookingStatus.PENDING && (
-                                        <>
-                                            <button
-                                                onClick={() => onApproveBooking(booking.id)}
-                                                className="text-white bg-green-500 hover:bg-green-600 p-1.5 rounded-lg transition-all shadow-sm"
-                                                title={t.approve}
-                                            >
-                                                <Check className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => onRejectBooking(booking.id)}
-                                                className="text-white bg-orange-500 hover:bg-orange-600 p-1.5 rounded-lg transition-all shadow-sm"
-                                                title={t.reject}
-                                            >
-                                                <XCircle className="w-4 h-4" />
-                                            </button>
-                                        </>
-                                    )}
-                                    {onUpdateBooking && (
-                                        <button
-                                            onClick={() => setEditingBooking(booking)}
-                                            className="text-slate-400 hover:text-brand-600 hover:bg-brand-50 p-2 rounded-lg transition-all"
-                                            title={t.edit}
-                                        >
-                                            <Edit className="w-4 h-4" />
-                                        </button>
-                                    )}
-                                    {/* All admins can delete bookings */}
-                                    <button
-                                        onClick={() => onDeleteBooking(booking.id)}
-                                        className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                        title={t.deleteButton}
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </td>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 mr-0">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${getAdminBookingStatusClass(displayState, booking.department)}`}>
+                              {getAdminBookingStatusLabel(booking)}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end space-x-1.5">
+                              {booking.status === BookingStatus.PENDING && (
+                                <>
+                                  <button
+                                    onClick={() => onApproveBooking(booking.id)}
+                                    className="inline-flex items-center justify-center text-white bg-green-500 hover:bg-green-600 border border-green-600 hover:border-green-700 p-1.5 rounded-lg transition-all shadow-sm"
+                                    title={t.approve}
+                                  >
+                                    <Check className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => onRejectBooking(booking.id)}
+                                    className="inline-flex items-center justify-center text-white bg-orange-500 hover:bg-orange-600 border border-orange-600 hover:border-orange-700 p-1.5 rounded-lg transition-all shadow-sm"
+                                    title={t.reject}
+                                  >
+                                    <XCircle className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                              {getAdminBookingDisplayState(booking) === 'waitForVerify' && onVerifyBooking && (
+                                <button
+                                  onClick={() => onVerifyBooking(booking.id)}
+                                  className="inline-flex items-center justify-center text-white bg-indigo-500 hover:bg-indigo-600 border border-indigo-600 hover:border-indigo-700 p-1.5 rounded-lg transition-all shadow-sm"
+                                  title={language === 'th' ? 'ยืนยันการใช้งานห้อง' : 'Verify Booking'}
+                                >
+                                  <ShieldCheck className="w-4 h-4" />
+                                </button>
+                              )}
+                              {onUpdateBooking && (
+                                <button
+                                  onClick={() => setEditingBooking(booking)}
+                                  className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 border border-slate-200 bg-white hover:bg-brand-50 hover:text-brand-600 hover:border-brand-200 shadow-sm transition-all"
+                                  title={t.edit}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </button>
+                              )}
+                              {/* All admins can delete bookings */}
+                              <button
+                                onClick={() => onDeleteBooking(booking.id)}
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 border border-slate-200 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200 shadow-sm transition-all"
+                                title={t.deleteButton}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
-                            );
-                        })
-                    )}
-                    </tbody>
-                </table>
-                </div>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
+          </div>
         </>
       )}
 
       {activeTab === 'analytics' && (
         <div className="space-y-6 animate-in fade-in zoom-in-95 duration-200">
-           {/* Total Bookings Header */}
-           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+          {/* Total Bookings Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl shadow-sm border border-slate-200">
+            <div>
+              <h2 className="font-bold text-slate-900 flex items-center">
+                <BarChart2 className="w-5 h-5 mr-2 text-brand-500" />
+                {t.totalBookingsHeader}
+              </h2>
+              <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'th' ? 'สถิติการจองทั้งหมดและประวัติย้อนหลัง' : 'Overall booking analytics and historical booking data'}</p>
+            </div>
+          </div>
+
+          {/* Metrics Stats Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-brand-50 text-brand-600">
+                <FileText className="w-6 h-6" />
+              </div>
               <div>
-                 <h2 className="font-bold text-slate-900 flex items-center">
-                    <BarChart2 className="w-5 h-5 mr-2 text-brand-500" />
-                    {t.totalBookingsHeader}
-                 </h2>
-                 <p className="text-xs text-slate-500 font-semibold mt-1">{language === 'th' ? 'สถิติการจองทั้งหมดและประวัติย้อนหลัง' : 'Overall booking analytics and historical booking data'}</p>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalBookingsHeader}</div>
+                <div className="text-2xl font-bold text-slate-800">{analyticsData.totalBookings}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{language === 'th' ? 'รายการทั้งหมดในระบบ' : 'all records in the system'}</div>
               </div>
-           </div>
+            </div>
 
-           {/* Metrics Stats Grid */}
-           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                 <div className="p-3 rounded-lg bg-brand-50 text-brand-600">
-                    <FileText className="w-6 h-6" />
-                 </div>
-                 <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.totalBookingsHeader}</div>
-                    <div className="text-2xl font-bold text-slate-800">{analyticsData.totalBookings}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{language === 'th' ? 'รายการทั้งหมดในระบบ' : 'all records in the system'}</div>
-                 </div>
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-orange-50 text-orange-600">
+                <Flame className="w-6 h-6 animate-pulse" />
               </div>
-
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                 <div className="p-3 rounded-lg bg-orange-50 text-orange-600">
-                    <Flame className="w-6 h-6 animate-pulse" />
-                 </div>
-                 <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.busiestRoomHeader}</div>
-                    <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]" title={analyticsData.busiestRoom}>{analyticsData.busiestRoom}</div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.busiestRoomHours > 0 ? `${analyticsData.busiestRoomHours} ${t.hoursBookedLabel}` : t.noReservations}</div>
-                 </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.busiestRoomHeader}</div>
+                <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]" title={analyticsData.busiestRoom}>{analyticsData.busiestRoom}</div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.busiestRoomHours > 0 ? `${analyticsData.busiestRoomHours} ${t.hoursBookedLabel}` : t.noReservations}</div>
               </div>
+            </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                 <div className="p-3 rounded-lg bg-indigo-50 text-indigo-600">
-                    <Clock className="w-6 h-6" />
-                 </div>
-                 <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.peakActiveTime}</div>
-                    <div className="text-2xl font-bold text-slate-800">
-                       {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : t.none}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-indigo-50 text-indigo-600">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.peakActiveTime}</div>
+                <div className="text-2xl font-bold text-slate-800">
+                  {analyticsData.peakHour !== -1 ? formatTimeValue(analyticsData.peakHour, language) : t.none}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.peakCount > 0 ? `${analyticsData.peakCount} ${t.overlappingBookings}` : t.noOverlappingBookings}</div>
+              </div>
+            </div>
+
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
+              <div className="p-3 rounded-lg bg-emerald-50 text-emerald-600">
+                <TrendingUp className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
+                <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
+                  {analyticsData.departmentData[0] ? formatDepartment(analyticsData.departmentData[0].name) : t.none}
+                </div>
+                <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Dual Column Chart lists */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Left Column: Room Occupancy Rates */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-slate-800">
+              <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
+                <Sparkles className="w-4 h-4 mr-2 text-yellow-500" />
+                {t.occupancyLoadHeader}
+              </h4>
+              <p className="text-xs text-slate-400 mb-6 font-semibold">{t.occupancyLoadSub}</p>
+
+              <div className="space-y-4">
+                {analyticsData.roomStats.map(item => (
+                  <div key={item.room.id} className="space-y-1.5">
+                    <div className="flex justify-between items-center text-xs font-bold text-slate-705">
+                      <span>{item.room.name} ({getRoomTypeLabel(item.room.type)})</span>
+                      <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {t.hoursShort})</span>
                     </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.peakCount > 0 ? `${analyticsData.peakCount} ${t.overlappingBookings}` : t.noOverlappingBookings}</div>
-                 </div>
+                    <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${item.occupancyRate >= 80
+                            ? 'bg-red-500'
+                            : item.occupancyRate >= 50
+                              ? 'bg-amber-500'
+                              : 'bg-brand-500'
+                          }`}
+                        style={{ width: `${item.occupancyRate}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
+            </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex items-center space-x-4">
-                 <div className="p-3 rounded-lg bg-emerald-50 text-emerald-600">
-                    <TrendingUp className="w-6 h-6" />
-                 </div>
-                 <div>
-                    <div className="text-xs font-bold text-slate-400 uppercase tracking-wider">{t.departmentMax}</div>
-                    <div className="text-lg font-bold text-slate-800 truncate max-w-[150px]">
-                       {analyticsData.departmentData[0] ? formatDepartment(analyticsData.departmentData[0].name) : t.none}
-                    </div>
-                    <div className="text-[10px] text-slate-500 mt-0.5 font-bold">{analyticsData.departmentData[0] ? `${analyticsData.departmentData[0].count} ${t.bookingsTotal}` : `0 ${t.bookingsTotal}`}</div>
-                 </div>
-              </div>
-           </div>
+            {/* Right Column: Department share */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between text-slate-800">
+              <div>
+                <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
+                  <Users className="w-4 h-4 mr-2 text-indigo-500" />
+                  {t.deptVolumeHeader}
+                </h4>
+                <p className="text-xs text-slate-400 mb-6 font-semibold">{t.deptVolumeSub}</p>
 
-           {/* Dual Column Chart lists */}
-           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              {/* Left Column: Room Occupancy Rates */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 text-slate-800">
-                 <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
-                    <Sparkles className="w-4 h-4 mr-2 text-yellow-500" />
-                    {t.occupancyLoadHeader}
-                 </h4>
-                 <p className="text-xs text-slate-400 mb-6 font-semibold">{t.occupancyLoadSub}</p>
-                 
-                 <div className="space-y-4">
-                    {analyticsData.roomStats.map(item => (
-                       <div key={item.room.id} className="space-y-1.5">
-                          <div className="flex justify-between items-center text-xs font-bold text-slate-705">
-                             <span>{item.room.name} ({getRoomTypeLabel(item.room.type)})</span>
-                             <span className="font-bold text-slate-800">{item.occupancyRate}% ({item.hoursBooked} {t.hoursShort})</span>
-                          </div>
-                          <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
-                             <div 
-                                className={`h-full rounded-full transition-all duration-500 ${
-                                   item.occupancyRate >= 80 
-                                      ? 'bg-red-500' 
-                                      : item.occupancyRate >= 50 
-                                          ? 'bg-amber-500' 
-                                          : 'bg-brand-500'
-                                }`}
-                                style={{ width: `${item.occupancyRate}%` }}
-                             />
-                          </div>
-                       </div>
-                    ))}
-                 </div>
-              </div>
-
-              {/* Right Column: Department share */}
-              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 flex flex-col justify-between text-slate-800">
-                 <div>
-                    <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider mb-4 flex items-center">
-                       <Users className="w-4 h-4 mr-2 text-indigo-500" />
-                       {t.deptVolumeHeader}
-                    </h4>
-                    <p className="text-xs text-slate-400 mb-6 font-semibold">{t.deptVolumeSub}</p>
-
-                    {analyticsData.departmentData.length === 0 ? (
-                       <div className="text-center py-8 text-slate-400 text-sm italic font-bold">{t.noDeptBookings}</div>
-                    ) : (
-                       <div className="space-y-4">
-                          {analyticsData.departmentData.map((dept, index) => (
-                             <div key={dept.name} className="space-y-1.5">
-                                <div className="flex justify-between items-center text-xs font-bold text-slate-707">
-                                   <span className="flex items-center">
-                                      <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
-                                      {formatDepartment(dept.name)}
-                                   </span>
-                                   <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.pct}%)</span>
-                                </div>
-                                <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-                                   <div 
-                                      className="h-full rounded-full transition-all duration-300" 
-                                      style={{ 
-                                         width: `${dept.pct}%`,
-                                         backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)`
-                                      }} 
-                                   />
-                                </div>
-                             </div>
-                          ))}
-                       </div>
-                    )}
-                 </div>
-                 
-                 <div className="p-3 bg-indigo-50/50 border border-indigo-150 rounded-xl mt-6 text-[11px] text-slate-600 flex items-start font-medium">
-                    <AlertCircle className="w-4 h-4 mr-2 text-indigo-500 flex-shrink-0 mt-0.5" />
-                    <span>{t.insightsFooter}</span>
-                 </div>
-              </div>
-           </div>
-
-<div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
-              <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
-                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
-                    <div>
-                       <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{language === 'th' ? 'ประวัติการจอง' : 'Booking History'}</h4>
-                       <p className="text-xs text-slate-400 mt-1 font-semibold">{language === 'th' ? 'วันนี้ก่อน ตามด้วยอนาคต และย้อนหลังจากใหม่ไปเก่า' : 'Today first, then future bookings, then past bookings newest to oldest'}</p>
-                    </div>
-                    <div className="relative w-full sm:w-72">
-                       <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
-                       <input
-                          type="text"
-                          placeholder={t.searchPlaceholder}
-                          value={searchTerm}
-                          onChange={(e) => setSearchTerm(e.target.value)}
-                          className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
-                       />
-                    </div>
-                 </div>
-                 <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end mt-2">
-                    <div className="sm:col-span-2">
-                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ปี' : 'Year'}</label>
-                       <select
-                          value={historyFilterYear}
-                          onChange={(e) => {
-                             const yr = e.target.value;
-                             setHistoryFilterYear(yr);
-                             if (yr === 'all') setHistoryFilterMonth('all');
-                          }}
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
-                       >
-                          <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Years'}</option>
-                          {availableYears.map(yr => (
-                             <option key={yr} value={yr}>{yr}</option>
-                          ))}
-                       </select>
-                    </div>
-
-                    <div className="sm:col-span-2">
-                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เดือน' : 'Month'}</label>
-                       <select
-                          value={historyFilterMonth}
-                          onChange={(e) => setHistoryFilterMonth(e.target.value)}
-                          disabled={historyFilterYear === 'all'}
-                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-50 disabled:text-slate-400 shadow-sm"
-                       >
-                          <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Months'}</option>
-                          {(language === 'th' ? MONTHS_TH : MONTHS_EN).map((m, idx) => (
-                             <option key={idx} value={idx + 1}>{m}</option>
-                          ))}
-                       </select>
-                    </div>
-
-                    <div className="sm:col-span-3">
-                       <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เจาะจงวันที่' : 'Specific Day'}</label>
-                       <div className="relative">
-                          <input
-                             type="date"
-                             lang="en-US"
-                             value={historyFilterDay}
-                             onChange={(e) => setHistoryFilterDay(e.target.value)}
-                             className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                {analyticsData.departmentData.length === 0 ? (
+                  <div className="text-center py-8 text-slate-400 text-sm italic font-bold">{t.noDeptBookings}</div>
+                ) : (
+                  <div className="space-y-4">
+                    {analyticsData.departmentData.map((dept, index) => (
+                      <div key={dept.name} className="space-y-1.5">
+                        <div className="flex justify-between items-center text-xs font-bold text-slate-707">
+                          <span className="flex items-center">
+                            <span className="w-2.5 h-2.5 rounded-full mr-2" style={{ backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)` }} />
+                            {formatDepartment(dept.name)}
+                          </span>
+                          <span className="font-bold text-slate-800">{dept.count} {t.timesCount} ({dept.hours} {t.hoursShort}) ({dept.pct}%)</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full transition-all duration-300"
+                            style={{
+                              width: `${dept.pct}%`,
+                              backgroundColor: `hsl(${15 + index * 60}, 75%, 60%)`
+                            }}
                           />
-                          {historyFilterDay ? (
-                             <button
-                                type="button"
-                                onClick={() => setHistoryFilterDay('')}
-                                className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 transition-colors"
-                             >
-                                <X className="w-4 h-4" />
-                             </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="p-3 bg-indigo-50/50 border border-indigo-150 rounded-xl mt-6 text-[11px] text-slate-600 flex items-start font-medium">
+                <AlertCircle className="w-4 h-4 mr-2 text-indigo-500 flex-shrink-0 mt-0.5" />
+                <span>{t.insightsFooter}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden text-slate-800">
+            <div className="p-4 border-b border-slate-200 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                <div>
+                  <h4 className="font-bold text-slate-800 text-sm uppercase tracking-wider">{language === 'th' ? 'ประวัติการจอง' : 'Booking History'}</h4>
+                  <p className="text-xs text-slate-400 mt-1 font-semibold">{language === 'th' ? 'วันนี้ก่อน ตามด้วยอนาคต และย้อนหลังจากใหม่ไปเก่า' : 'Today first, then future bookings, then past bookings newest to oldest'}</p>
+                </div>
+                <div className="relative w-full sm:w-72">
+                  <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder={t.searchPlaceholder}
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-4 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent font-medium"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-end mt-2">
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'ปี' : 'Year'}</label>
+                  <select
+                    value={historyFilterYear}
+                    onChange={(e) => {
+                      const yr = e.target.value;
+                      setHistoryFilterYear(yr);
+                      if (yr === 'all') setHistoryFilterMonth('all');
+                    }}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                  >
+                    <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Years'}</option>
+                    {availableYears.map(yr => (
+                      <option key={yr} value={yr}>{yr}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-2">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เดือน' : 'Month'}</label>
+                  <select
+                    value={historyFilterMonth}
+                    onChange={(e) => setHistoryFilterMonth(e.target.value)}
+                    disabled={historyFilterYear === 'all'}
+                    className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white disabled:bg-slate-50 disabled:text-slate-400 shadow-sm"
+                  >
+                    <option value="all">{language === 'th' ? 'ทั้งหมด (All)' : 'All Months'}</option>
+                    {(language === 'th' ? MONTHS_TH : MONTHS_EN).map((m, idx) => (
+                      <option key={idx} value={idx + 1}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="sm:col-span-3">
+                  <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-500 mb-1">{language === 'th' ? 'เจาะจงวันที่' : 'Specific Day'}</label>
+                  <div className="relative">
+                    <input
+                      type="date"
+                      lang="en-US"
+                      value={historyFilterDay}
+                      onChange={(e) => setHistoryFilterDay(e.target.value)}
+                      className="w-full pl-3 pr-8 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white shadow-sm"
+                    />
+                    {historyFilterDay ? (
+                      <button
+                        type="button"
+                        onClick={() => setHistoryFilterDay('')}
+                        className="absolute right-2.5 top-2.5 text-slate-400 hover:text-slate-600 transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <span className="absolute right-2.5 top-2.5 text-xs text-slate-300 font-bold select-none pointer-events-none">{language === 'th' ? 'ทั้งหมด' : 'All'}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="hidden sm:block sm:col-span-3"></div>
+
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    onClick={handleExportBookingHistoryCsv}
+                    className="inline-flex w-full items-center justify-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all active:scale-[0.98]"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    {language === 'th' ? 'ส่งออก CSV' : 'Export CSV'}
+                  </button>
+                </div>
+
+                <div className="sm:col-span-12 text-xs font-bold text-slate-500 pt-1">
+                  {(() => {
+                    const segments: string[] = [];
+
+                    if (historyFilterDay) {
+                      segments.push(language === 'th'
+                        ? `เฉพาะวันที่: ${formatDateInputDisplay(historyFilterDay)}`
+                        : `Specific Date: ${formatDateInputDisplay(historyFilterDay)}`);
+                    }
+
+                    if (historyFilterYear !== 'all') {
+                      const monthIndex = historyFilterMonth === 'all' ? -1 : parseInt(historyFilterMonth, 10) - 1;
+                      const monthLabel = monthIndex === -1
+                        ? (language === 'th' ? 'ทุกเดือน' : 'All Months')
+                        : (language === 'th' ? MONTHS_TH[monthIndex] : MONTHS_EN[monthIndex]);
+                      segments.push(language === 'th'
+                        ? `ช่วงเวลา: ${monthLabel} ปี ${historyFilterYear}`
+                        : `Period: ${monthLabel} ${historyFilterYear}`);
+                    } else {
+                      if (!historyFilterDay) {
+                        segments.push(language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates');
+                      }
+                    }
+
+                    return segments.join(' | ');
+                  })()}
+                </div>
+              </div>
+            </div>
+            <div className="overflow-x-auto max-h-[520px]">
+              <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
+                <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[11px] font-bold uppercase tracking-wider text-slate-500 backdrop-blur">
+                  <tr>
+                    <th className="w-[150px] px-5 py-3">{t.room}</th>
+                    <th className="px-5 py-3">{t.eventCol}</th>
+                    <th className="w-[170px] px-5 py-3">{t.dateTimeCol}</th>
+                    <th className="w-[170px] px-5 py-3">{t.organizerName}</th>
+                    <th className="w-[135px] px-5 py-3">{t.employeeId}</th>
+                    <th className="w-[110px] px-5 py-3">{t.department}</th>
+                    <th className="w-[100px] px-5 py-3">{t.deskShort}</th>
+                    <th className="w-[150px] px-5 py-3">{t.status}</th>
+                    <th className="sticky right-0 z-20 w-[110px] bg-slate-50/95 pl-2 pr-4 py-3 text-right backdrop-blur">{t.actionsCol}</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white font-medium">
+                  {bookingHistory.length === 0 ? (
+                    <tr>
+                      <td colSpan={9} className="px-6 py-10 text-center text-sm font-semibold text-slate-400">{t.noBookingsTable}</td>
+                    </tr>
+                  ) : bookingHistory.map(booking => {
+                    const displayState = getAdminBookingDisplayState(booking);
+                    const departmentDisplayName = formatDepartment(booking.department);
+                    return (
+                      <tr key={booking.id} className="group border-b border-slate-100 transition-colors hover:bg-slate-50/50 bg-white">
+                        <td className="px-5 py-4 align-top">
+                          <span className="inline-flex max-w-full items-center truncate rounded-md border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700" title={getRoomName(booking.roomId)}>{getRoomName(booking.roomId)}</span>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <div className="truncate font-bold text-slate-800" title={translateText(booking.title, language)}>{translateText(booking.title, language)}</div>
+                          <div className="mt-1 truncate font-mono text-[11px] text-slate-400" title={booking.id}>{booking.id}</div>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <div className="font-bold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                          <div className="mt-1 font-mono text-xs font-semibold text-slate-500">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
+                        </td>
+                        <td className="px-5 py-4 align-top text-slate-600">
+                          <div className="truncate font-bold text-slate-800" title={booking.organizer || '-'}>{booking.organizer || '-'}</div>
+                          {booking.email && <div className="mt-1 truncate text-xs font-semibold text-slate-400" title={booking.email}>{booking.email}</div>}
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <span className="font-mono text-xs font-bold text-slate-600">{booking.employeeId || '-'}</span>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <span className={`inline-flex min-w-10 items-center justify-center rounded-md border px-2 py-1 font-mono text-xs font-bold uppercase ${getBookingDepartmentBadgeClass(booking.department)}`}>{departmentDisplayName || '-'}</span>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          {booking.deskNumber ? (
+                            <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-bold text-slate-600">{booking.deskNumber}</span>
                           ) : (
-                             <span className="absolute right-2.5 top-2.5 text-xs text-slate-300 font-bold select-none pointer-events-none">{language === 'th' ? 'ทั้งหมด' : 'All'}</span>
+                            <span className="text-sm font-semibold text-slate-300">-</span>
                           )}
-                       </div>
-                    </div>
-
-                    <div className="hidden sm:block sm:col-span-3"></div>
-
-                    <div className="sm:col-span-2">
-                       <button
-                          type="button"
-                          onClick={handleExportBookingHistoryCsv}
-                          className="inline-flex w-full items-center justify-center px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-all active:scale-[0.98]"
-                       >
-                          <Download className="w-4 h-4 mr-2" />
-                          {language === 'th' ? 'ส่งออก CSV' : 'Export CSV'}
-                       </button>
-                    </div>
-
-                    <div className="sm:col-span-12 text-xs font-bold text-slate-500 pt-1">
-                       {(() => {
-                          const segments: string[] = [];
-
-                          if (historyFilterDay) {
-                             segments.push(language === 'th' 
-                                ? `เฉพาะวันที่: ${formatDateInputDisplay(historyFilterDay)}` 
-                                : `Specific Date: ${formatDateInputDisplay(historyFilterDay)}`);
-                          }
-
-                          if (historyFilterYear !== 'all') {
-                             const monthIndex = historyFilterMonth === 'all' ? -1 : parseInt(historyFilterMonth, 10) - 1;
-                             const monthLabel = monthIndex === -1
-                                ? (language === 'th' ? 'ทุกเดือน' : 'All Months')
-                                : (language === 'th' ? MONTHS_TH[monthIndex] : MONTHS_EN[monthIndex]);
-                             segments.push(language === 'th'
-                                ? `ช่วงเวลา: ${monthLabel} ปี ${historyFilterYear}`
-                                : `Period: ${monthLabel} ${historyFilterYear}`);
-                          } else {
-                             if (!historyFilterDay) {
-                                segments.push(language === 'th' ? 'แสดงทุกช่วงเวลา' : 'Showing all dates');
-                             }
-                          }
-
-                          return segments.join(' | ');
-                       })()}
-                    </div>
-                 </div>
-              </div>
-              <div className="overflow-x-auto max-h-[520px]">
-                 <table className="w-full min-w-[1120px] table-fixed text-left text-sm">
-                    <thead className="sticky top-0 z-10 border-b border-slate-200 bg-slate-50/95 text-[11px] font-bold uppercase tracking-wider text-slate-500 backdrop-blur">
-                       <tr>
-                          <th className="w-[150px] px-5 py-3">{t.room}</th>
-                          <th className="px-5 py-3">{t.eventCol}</th>
-                          <th className="w-[170px] px-5 py-3">{t.dateTimeCol}</th>
-                          <th className="w-[170px] px-5 py-3">{t.organizerName}</th>
-                          <th className="w-[135px] px-5 py-3">{t.employeeId}</th>
-                          <th className="w-[110px] px-5 py-3">{t.department}</th>
-                          <th className="w-[100px] px-5 py-3">{t.deskShort}</th>
-                          <th className="w-[150px] px-5 py-3">{t.status}</th>
-                          <th className="w-[96px] px-5 py-3 text-right">{t.actionsCol}</th>
-                       </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100 bg-white font-medium">
-                       {bookingHistory.length === 0 ? (
-                          <tr>
-                             <td colSpan={9} className="px-6 py-10 text-center text-sm font-semibold text-slate-400">{t.noBookingsTable}</td>
-                          </tr>
-                       ) : bookingHistory.map(booking => {
-                          const displayState = getAdminBookingDisplayState(booking);
-                          const departmentDisplayName = formatDepartment(booking.department);
-                          return (
-                             <tr key={booking.id} className={`group transition-colors ${getBookingDepartmentClassForState(displayState, booking.department)} hover:shadow-sm`}>
-                                <td className="px-5 py-4 align-top">
-                                   <span className="inline-flex max-w-full items-center truncate rounded-md border border-brand-100 bg-brand-50 px-2.5 py-1 text-xs font-bold text-brand-700" title={getRoomName(booking.roomId)}>{getRoomName(booking.roomId)}</span>
-                                </td>
-                                <td className="px-5 py-4 align-top">
-                                   <div className="truncate font-bold text-slate-800" title={translateText(booking.title, language)}>{translateText(booking.title, language)}</div>
-                                   <div className="mt-1 truncate font-mono text-[11px] text-slate-400" title={booking.id}>{booking.id}</div>
-                                </td>
-                                <td className="px-5 py-4 align-top">
-                                   <div className="font-bold text-slate-900">{formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })}</div>
-                                   <div className="mt-1 font-mono text-xs font-semibold text-slate-500">{formatTimeRange(booking.startTime, booking.endTime, language)}</div>
-                                </td>
-                                <td className="px-5 py-4 align-top text-slate-600">
-                                   <div className="truncate font-bold text-slate-800" title={booking.organizer || '-'}>{booking.organizer || '-'}</div>
-                                   {booking.email && <div className="mt-1 truncate text-xs font-semibold text-slate-400" title={booking.email}>{booking.email}</div>}
-                                </td>
-                                <td className="px-5 py-4 align-top">
-                                   <span className="font-mono text-xs font-bold text-slate-600">{booking.employeeId || '-'}</span>
-                                </td>
-                                <td className="px-5 py-4 align-top">
-                                   <span className={`inline-flex min-w-10 items-center justify-center rounded-md border px-2 py-1 font-mono text-xs font-bold uppercase ${getBookingDepartmentBadgeClass(booking.department)}`}>{departmentDisplayName || '-'}</span>
-                                </td>
-                                <td className="px-5 py-4 align-top">
-                                   {booking.deskNumber ? (
-                                      <span className="inline-flex items-center rounded-md bg-slate-100 px-2 py-1 font-mono text-xs font-bold text-slate-600">{booking.deskNumber}</span>
-                                   ) : (
-                                      <span className="text-sm font-semibold text-slate-300">-</span>
-                                   )}
-                                </td>
-                                <td className="px-5 py-4 align-top">
-                                   <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${getAdminBookingStatusClass(displayState, booking.department)}`}>{getAdminBookingStatusLabel(booking)}</span>
-                                </td>
-                                <td className="px-5 py-4 text-right align-top">
-                                   <div className="flex items-center justify-end space-x-1.5">
-                                      {onUpdateBooking && (
-                                         <button
-                                            onClick={() => setEditingBooking(booking)}
-                                            className="rounded-lg p-2 text-slate-400 transition-all hover:bg-brand-50 hover:text-brand-600"
-                                            title={t.edit}
-                                         >
-                                            <Edit className="w-4 h-4" />
-                                         </button>
-                                      )}
-                                      <button
-                                         onClick={() => onDeleteBooking(booking.id)}
-                                         className="rounded-lg p-2 text-slate-400 transition-all hover:bg-red-50 hover:text-red-600"
-                                         title={t.deleteButton}
-                                      >
-                                         <Trash2 className="w-4 h-4" />
-                                      </button>
-                                   </div>
-                                </td>
-                             </tr>
-                          );
-                       })}
-                    </tbody>
-                 </table>
-              </div>
-           </div>
+                        </td>
+                        <td className="px-5 py-4 align-top">
+                          <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${getAdminBookingStatusClass(displayState, booking.department)}`}>{getAdminBookingStatusLabel(booking)}</span>
+                        </td>
+                        <td className="sticky right-0 z-10 bg-white pl-2 pr-4 py-4 text-right align-top group-hover:bg-slate-50 shadow-[-10px_0_14px_rgba(15,23,42,0.04)]">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            {getAdminBookingDisplayState(booking) === 'waitForVerify' && onVerifyBooking && (
+                              <button
+                                onClick={() => onVerifyBooking(booking.id)}
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-white border border-indigo-600 bg-indigo-500 hover:bg-indigo-600 shadow-sm transition-all"
+                                title={language === 'th' ? 'ยืนยันการใช้งานห้อง' : 'Verify Booking'}
+                              >
+                                <ShieldCheck className="w-4 h-4" />
+                              </button>
+                            )}
+                            {onUpdateBooking && (
+                              <button
+                                onClick={() => setEditingBooking(booking)}
+                                className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 border border-slate-200 bg-white hover:bg-brand-50 hover:text-brand-600 hover:border-brand-200 shadow-sm transition-all"
+                                title={t.edit}
+                              >
+                                <Edit className="w-4 h-4" />
+                              </button>
+                            )}
+                            <button
+                              onClick={() => onDeleteBooking(booking.id)}
+                              className="inline-flex items-center justify-center rounded-lg p-1.5 text-slate-500 border border-slate-200 bg-white hover:bg-red-50 hover:text-red-600 hover:border-red-200 shadow-sm transition-all"
+                              title={t.deleteButton}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
@@ -1763,28 +1912,34 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <th className="px-6 py-3">{t.relatedCol}</th>
                   <th className="px-6 py-3">{t.sentAtCol}</th>
                   <th className="px-6 py-3">{t.sentStatusCol}</th>
+                  <th className="px-6 py-3">{t.userVerifiedCol}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {isEmailHistoryLoading && emailHistory.length === 0 ? (
+                {isEmailHistoryLoading && combinedEmailHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500">
                       {t.loadingEmailHistory}...
                     </td>
                   </tr>
-                ) : emailHistory.length === 0 ? (
+                ) : combinedEmailHistory.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500 italic">
+                    <td colSpan={6} className="px-6 py-8 text-center text-slate-500 italic">
                       {t.noEmailHistory}
                     </td>
                   </tr>
                 ) : (
-                  emailHistory.map((record) => {
+                  combinedEmailHistory.map((record) => {
+                    const isQueuedStatus = record.status === 'queued';
                     const relatedBooking = record.relatedBookingTitle || record.relatedBookingId;
                     const relatedRoom = record.relatedRoomName || (record.relatedRoomId ? getRoomName(record.relatedRoomId) : '');
                     const purpose = record.purpose === 'Booking Verification'
                       ? t.bookingVerificationPurpose
                       : translateText(record.purpose, language);
+                    
+                    const booking = bookings.find(b => b.id === record.relatedBookingId);
+                    const verifiedStatus = getEmailHistoryVerificationStatus(record, booking);
+
                     return (
                       <tr key={record.id} className="hover:bg-slate-50 transition-colors align-top">
                         <td className="px-6 py-4">
@@ -1825,12 +1980,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                         </td>
                         <td className="px-6 py-4">
                           <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                            record.status === 'successful'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : 'bg-rose-100 text-rose-700'
-                          }`}>
-                            {record.status === 'successful' ? t.emailStatusSuccessful : t.emailStatusFailed}
+                              isQueuedStatus
+                                ? 'bg-amber-100 text-amber-700'
+                                : record.status === 'successful'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : 'bg-rose-100 text-rose-700'
+                            }`}>
+                            {getEmailSentStatusLabel(record.status)}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          {verifiedStatus === 'verified' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700 border border-emerald-200">
+                              <Check className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
+                            </span>
+                          ) : verifiedStatus === 'pendingSend' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                              <Clock className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
+                            </span>
+                          ) : verifiedStatus === 'waitForVerify' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-700 border border-amber-200">
+                              <Clock className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
+                            </span>
+                          ) : verifiedStatus === 'notVerified' ? (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700 border border-rose-200">
+                              <XCircle className="w-3.5 h-3.5 mr-1" />
+                              {getEmailHistoryVerificationStatusLabel(verifiedStatus)}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 font-semibold">{getEmailHistoryVerificationStatusLabel(verifiedStatus)}</span>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1843,164 +2025,164 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       )}
 
       {activeTab === 'rooms' && (
-            <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800">
-                <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-                    <h2 className="font-bold text-slate-800">{t.roomMgmtTab}</h2>
-                    <button 
-                        onClick={openAddRoomModal}
-                        className="flex items-center space-x-2 bg-brand-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
-                    >
-                        <Plus className="w-4 h-4" />
-                        <span>{t.addRoom}</span>
-                    </button>
-                </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800">
+          <div className="p-4 border-b border-slate-200 flex justify-between items-center">
+            <h2 className="font-bold text-slate-800">{t.roomMgmtTab}</h2>
+            <button
+              onClick={openAddRoomModal}
+              className="flex items-center space-x-2 bg-brand-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t.addRoom}</span>
+            </button>
+          </div>
 
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                            <tr>
-                                <th className="px-6 py-3">{t.image}</th>
-                                <th className="px-6 py-3">{t.name}</th>
-                                <th className="px-6 py-3">{t.type}</th>
-                                <th className="px-6 py-3">{t.capacity}</th>
-                                <th className="px-6 py-3">{t.amenities}</th>
-                                <th className="px-6 py-3">{t.roomStatusCol}</th>
-                                <th className="px-6 py-3 text-right">{t.actionsCol}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                            {sortedRooms.map(room => (
-                                <tr key={room.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4">
-                                        <div className="h-12 w-20 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
-                                            {room.imageUrl ? (
-                                                <img src={room.imageUrl} alt={room.name} className="h-full w-full object-cover" />
-                                            ) : (
-                                                <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-600" />
-                                            )}
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-4 font-semibold text-slate-900">{room.name}</td>
-                                    <td className="px-6 py-4">
-                                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
-                                            {getRoomTypeLabel(room.type)}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-600">{room.capacity} {t.ppl}</td>
-                                    <td className="px-6 py-4 text-slate-500 max-w-xs truncate">
-                                        {translateAmenities(room.amenities, language).join(', ')}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        {isRoomCurrentlyClosed(room) ? (
-                                            <div className="flex flex-col">
-                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
-                                                    ● {t.statusClosed}
-                                                </span>
-                                                {room.closureReason && (
-                                                    <span className="text-[10px] font-bold text-rose-500 -mt-0.5 truncate max-w-[150px]" title={translateText(room.closureReason, language)}>
-                                                        {translateText(room.closureReason, language)}
-                                                    </span>
-                                                )}
-                                                {(room.closureStartDate || room.closureStartTime !== undefined) && (
-                                                    <span className="text-[9px] text-slate-500 font-semibold font-mono mt-0.5">
-                                                        {room.closureStartDate && formatDateInputDisplay(room.closureStartDate)}
-                                                        {room.closureStartTime !== undefined && ` [${String(room.closureStartTime).padStart(2, '0')}:00-${String(room.closureEndTime || 24).padStart(2, '0')}:00]`}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        ) : (
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
-                                                ● {t.statusOpen}
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        <div className="flex items-center justify-end space-x-2">
-                                            <button
-                                                onClick={() => openEditRoomModal(room)}
-                                                className="text-slate-400 hover:text-brand-500 hover:bg-brand-50 p-2 rounded-lg transition-all"
-                                                title={t.edit}
-                                            >
-                                                <Edit className="w-4 h-4" />
-                                            </button>
-                                            <button
-                                                onClick={() => onDeleteRoom(room.id)}
-                                                className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                                title={t.deleteButton}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">{t.image}</th>
+                  <th className="px-6 py-3">{t.name}</th>
+                  <th className="px-6 py-3">{t.type}</th>
+                  <th className="px-6 py-3">{t.capacity}</th>
+                  <th className="px-6 py-3">{t.amenities}</th>
+                  <th className="px-6 py-3">{t.roomStatusCol}</th>
+                  <th className="px-6 py-3 text-right">{t.actionsCol}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {sortedRooms.map(room => (
+                  <tr key={room.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4">
+                      <div className="h-12 w-20 overflow-hidden rounded-lg bg-slate-100 border border-slate-200">
+                        {room.imageUrl ? (
+                          <img src={room.imageUrl} alt={room.name} className="h-full w-full object-cover" />
+                        ) : (
+                          <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-600" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 font-semibold text-slate-900">{room.name}</td>
+                    <td className="px-6 py-4">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700">
+                        {getRoomTypeLabel(room.type)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-600">{room.capacity} {t.ppl}</td>
+                    <td className="px-6 py-4 text-slate-500 max-w-xs truncate">
+                      {translateAmenities(room.amenities, language).join(', ')}
+                    </td>
+                    <td className="px-6 py-4">
+                      {isRoomCurrentlyClosed(room) ? (
+                        <div className="flex flex-col">
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-rose-100 text-rose-700">
+                            ● {t.statusClosed}
+                          </span>
+                          {room.closureReason && (
+                            <span className="text-[10px] font-bold text-rose-500 -mt-0.5 truncate max-w-[150px]" title={translateText(room.closureReason, language)}>
+                              {translateText(room.closureReason, language)}
+                            </span>
+                          )}
+                          {(room.closureStartDate || room.closureStartTime !== undefined) && (
+                            <span className="text-[9px] text-slate-500 font-semibold font-mono mt-0.5">
+                              {room.closureStartDate && formatDateInputDisplay(room.closureStartDate)}
+                              {room.closureStartTime !== undefined && ` [${String(room.closureStartTime).padStart(2, '0')}:00-${String(room.closureEndTime || 24).padStart(2, '0')}:00]`}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-700">
+                          ● {t.statusOpen}
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => openEditRoomModal(room)}
+                          className="text-slate-400 hover:text-brand-500 hover:bg-brand-50 p-2 rounded-lg transition-all"
+                          title={t.edit}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => onDeleteRoom(room.id)}
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
+                          title={t.deleteButton}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       {activeTab === 'users' && currentUser.role === 'SUPER_ADMIN' && (
-          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800">
-                <div className="p-4 border-b border-slate-200 flex justify-between items-center">
-                    <h2 className="font-bold text-slate-800">{t.userMgmtTab}</h2>
-                    <button 
-                        onClick={() => {
-                            setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-                            setIsUserModalOpen(true);
-                        }}
-                        className="flex items-center space-x-2 bg-brand-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
-                    >
-                        <Plus className="w-4 h-4" />
-                        <span>{t.addAdmin}</span>
-                    </button>
-                </div>
-
-                <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
-                            <tr>
-                                <th className="px-6 py-3">{t.username}</th>
-                                <th className="px-6 py-3">{t.role}</th>
-                                <th className="px-6 py-3">{t.password}</th>
-                                <th className="px-6 py-3 text-right">{t.actionsCol}</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 font-medium">
-                            {adminUsers.map(user => (
-                                <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                                    <td className="px-6 py-4 font-semibold text-slate-900 flex items-center">
-                                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center mr-3">
-                                            <User className="w-4 h-4 text-slate-500" />
-                                        </div>
-                                        {user.username}
-                                        {user.id === currentUser.id && <span className="ml-2 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">{t.currentUserBadge}</span>}
-                                    </td>
-                                    <td className="px-6 py-4">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${user.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700' : 'bg-teal-100 text-teal-700'}`}>
-                                            {user.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
-                                        </span>
-                                    </td>
-                                    <td className="px-6 py-4 text-slate-400 font-mono text-xs font-semibold">
-                                        {user.password}
-                                    </td>
-                                    <td className="px-6 py-4 text-right">
-                                        {user.id !== currentUser.id && (
-                                            <button
-                                                onClick={() => handleDeleteUser(user.id)}
-                                                className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
-                                                title={t.deleteButton}
-                                            >
-                                                <Trash2 className="w-4 h-4" />
-                                            </button>
-                                        )}
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800">
+          <div className="p-4 border-b border-slate-200 flex justify-between items-center">
+            <h2 className="font-bold text-slate-800">{t.userMgmtTab}</h2>
+            <button
+              onClick={() => {
+                setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
+                setIsUserModalOpen(true);
+              }}
+              className="flex items-center space-x-2 bg-brand-500 text-white px-3 py-2 rounded-lg text-sm font-semibold hover:bg-brand-600 transition-colors shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t.addAdmin}</span>
+            </button>
           </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-left">
+              <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">{t.username}</th>
+                  <th className="px-6 py-3">{t.role}</th>
+                  <th className="px-6 py-3">{t.password}</th>
+                  <th className="px-6 py-3 text-right">{t.actionsCol}</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-medium">
+                {adminUsers.map(user => (
+                  <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-6 py-4 font-semibold text-slate-900 flex items-center">
+                      <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center mr-3">
+                        <User className="w-4 h-4 text-slate-500" />
+                      </div>
+                      {user.username}
+                      {user.id === currentUser.id && <span className="ml-2 text-xs bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full font-bold">{t.currentUserBadge}</span>}
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${user.role === 'SUPER_ADMIN' ? 'bg-brand-100 text-brand-700' : 'bg-teal-100 text-teal-700'}`}>
+                        {user.role === 'SUPER_ADMIN' ? t.superAdmin : t.approver}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-slate-400 font-mono text-xs font-semibold">
+                      {user.password}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      {user.id !== currentUser.id && (
+                        <button
+                          onClick={() => handleDeleteUser(user.id)}
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 p-2 rounded-lg transition-all"
+                          title={t.deleteButton}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
 
       <EditBookingModal
@@ -2017,445 +2199,442 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       {/* Add/Edit Room Modal */}
       {isRoomModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] animate-in fade-in zoom-in duration-200 overflow-hidden">
-                <form onSubmit={handleRoomSubmit} className="flex max-h-[calc(100vh-2rem)] flex-col">
-                    <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-100">
-                        <h3 className="text-lg font-bold text-slate-900">
-                            {editingRoom ? t.editRoom : t.addNewRoom}
-                        </h3>
-                        <button type="button" onClick={() => setIsRoomModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                            <X className="w-5 h-5" />
-                        </button>
-                    </div>
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[calc(100vh-2rem)] animate-in fade-in zoom-in duration-200 overflow-hidden">
+            <form onSubmit={handleRoomSubmit} className="flex max-h-[calc(100vh-2rem)] flex-col">
+              <div className="flex flex-shrink-0 justify-between items-center p-6 border-b border-slate-100">
+                <h3 className="text-lg font-bold text-slate-900">
+                  {editingRoom ? t.editRoom : t.addNewRoom}
+                </h3>
+                <button type="button" onClick={() => setIsRoomModalOpen(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
-                    <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-4">
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomName}</label>
-                        <input 
-                            required
-                            type="text"
-                            value={roomForm.name}
-                            onChange={(e) => setRoomForm({...roomForm, name: e.target.value})}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                            placeholder={t.roomNamePlaceholder}
+              <div className="flex-1 overflow-y-auto overscroll-contain p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomName}</label>
+                  <input
+                    required
+                    type="text"
+                    value={roomForm.name}
+                    onChange={(e) => setRoomForm({ ...roomForm, name: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    placeholder={t.roomNamePlaceholder}
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.type}</label>
+                    <select
+                      value={roomForm.type}
+                      onChange={(e) => setRoomForm({ ...roomForm, type: e.target.value as RoomType })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold"
+                    >
+                      <option value={RoomType.MEETING}>{t.meetingRoom}</option>
+                      <option value={RoomType.RECEPTION}>{t.receptionArea}</option>
+                      <option value={RoomType.TRAINING}>{t.trainingRoom}</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-semibold text-slate-700 mb-1">{t.capacity}</label>
+                    <input
+                      required
+                      type="number"
+                      min="1"
+                      value={roomForm.capacity}
+                      onChange={(e) => setRoomForm({ ...roomForm, capacity: parseInt(e.target.value) })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t.amenitiesCommaSeparated}</label>
+                  <input
+                    type="text"
+                    value={amenitiesString}
+                    onChange={(e) => setAmenitiesString(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    placeholder={t.amenitiesPlaceholder}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomImage}</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-3 items-stretch">
+                    <div className="relative h-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                      {roomForm.imageUrl ? (
+                        <img
+                          src={roomForm.imageUrl}
+                          alt={String(roomForm.name || t.roomImage)}
+                          className="h-full w-full object-cover"
                         />
+                      ) : (
+                        <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-700" />
+                      )}
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">{t.type}</label>
-                            <select 
-                                value={roomForm.type}
-                                onChange={(e) => setRoomForm({...roomForm, type: e.target.value as RoomType})}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold"
-                            >
-                                <option value={RoomType.MEETING}>{t.meetingRoom}</option>
-                                <option value={RoomType.RECEPTION}>{t.receptionArea}</option>
-                                <option value={RoomType.TRAINING}>{t.trainingRoom}</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">{t.capacity}</label>
-                            <input 
-                                required
-                                type="number"
-                                min="1"
-                                value={roomForm.capacity}
-                                onChange={(e) => setRoomForm({...roomForm, capacity: parseInt(e.target.value)})}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                            />
-                        </div>
-                    </div>
+                    <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center transition-colors hover:border-brand-300 hover:bg-brand-50">
+                      <Upload className="mb-2 h-5 w-5 text-brand-500" />
+                      <span className="text-sm font-bold text-slate-700">
+                        {roomForm.imageUrl ? t.replaceRoomImage : t.clickToUpload}
+                      </span>
+                      <span className="mt-1 text-xs font-medium text-slate-500">{t.uploadRoomImageHelp}</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp"
+                        onChange={handleImageUpload}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
 
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">{t.amenitiesCommaSeparated}</label>
-                        <input 
-                            type="text"
-                            value={amenitiesString}
-                            onChange={(e) => setAmenitiesString(e.target.value)}
-                            className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                            placeholder={t.amenitiesPlaceholder}
+                <div className="border-t border-slate-100 pt-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-slate-800">{t.roomStatusLabel}</label>
+                    <div className="flex items-center space-x-1.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setRoomForm({ ...roomForm, isClosed: false })}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${!roomForm.isClosed ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {t.statusOpen}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setRoomForm({
+                          ...roomForm,
+                          isClosed: true,
+                          closureStartTime: roomForm.closureStartTime ?? BOOKING_START_HOUR,
+                          closureEndTime: roomForm.closureEndTime &&
+                            roomForm.closureEndTime > (roomForm.closureStartTime ?? BOOKING_START_HOUR) &&
+                            roomForm.closureEndTime <= BOOKING_END_HOUR
+                            ? roomForm.closureEndTime
+                            : Math.min((roomForm.closureStartTime ?? BOOKING_START_HOUR) + 1, BOOKING_END_HOUR)
+                        })}
+                        className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${roomForm.isClosed ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        {t.statusClosed}
+                      </button>
+                    </div>
+                  </div>
+
+                  {roomForm.isClosed && (
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 animate-in slide-in-from-top-2 duration-150">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureReasonLabel}</label>
+                        <select
+                          value={
+                            roomForm.closureReason === ''
+                              ? ''
+                              : CLOSURE_REASONS.some(r => r.key === roomForm.closureReason)
+                                ? roomForm.closureReason
+                                : 'Other'
+                          }
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'Other') {
+                              // Set a dynamic placeholder reason for User to start editing
+                              setRoomForm({ ...roomForm, closureReason: t.customRenovationReason });
+                            } else {
+                              setRoomForm({ ...roomForm, closureReason: val });
+                            }
+                          }}
+                          className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
+                        >
+                          <option value="">{t.closureReasonSelectPlaceholder}</option>
+                          {CLOSURE_REASONS.map(r => (
+                            <option key={r.key} value={r.key}>
+                              {language === 'th' ? r.labelTh : r.labelEn}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Show text input only if 'Other' is selected or a custom reason (not matching any standard values) exists */}
+                        {(roomForm.closureReason !== '' &&
+                          !CLOSURE_REASONS.some(r => r.key === roomForm.closureReason && r.key !== 'Other')) && (
+                            <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                              <input
+                                type="text"
+                                value={roomForm.closureReason === 'Custom Renovation' || roomForm.closureReason === 'ปรับปรุงห้อง' ? '' : roomForm.closureReason || ''}
+                                onChange={(e) => setRoomForm({ ...roomForm, closureReason: e.target.value })}
+                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
+                                placeholder={t.customClosureReasonPlaceholder}
+                              />
+                            </div>
+                          )}
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureSelectedDateLabel}</label>
+                        <input
+                          type="date"
+                          lang="en-US"
+                          value={roomForm.closureStartDate || ''}
+                          onChange={(e) => setRoomForm({
+                            ...roomForm,
+                            closureStartDate: e.target.value,
+                            closureEndDate: e.target.value
+                          })}
+                          className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
                         />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-semibold text-slate-700 mb-1">{t.roomImage}</label>
-                        <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-3 items-stretch">
-                            <div className="relative h-28 overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
-                                {roomForm.imageUrl ? (
-                                    <img
-                                        src={roomForm.imageUrl}
-                                        alt={String(roomForm.name || t.roomImage)}
-                                        className="h-full w-full object-cover"
-                                    />
-                                ) : (
-                                    <div className="h-full w-full bg-gradient-to-r from-brand-500 to-brand-700" />
-                                )}
-                            </div>
-                            <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 px-4 py-3 text-center transition-colors hover:border-brand-300 hover:bg-brand-50">
-                                <Upload className="mb-2 h-5 w-5 text-brand-500" />
-                                <span className="text-sm font-bold text-slate-700">
-                                    {roomForm.imageUrl ? t.replaceRoomImage : t.clickToUpload}
-                                </span>
-                                <span className="mt-1 text-xs font-medium text-slate-500">{t.uploadRoomImageHelp}</span>
-                                <input
-                                    type="file"
-                                    accept="image/png,image/jpeg,image/webp"
-                                    onChange={handleImageUpload}
-                                    className="hidden"
-                                />
-                            </label>
-                        </div>
-                    </div>
-
-                    <div className="border-t border-slate-100 pt-4 space-y-4">
-                        <div className="flex items-center justify-between">
-                            <label className="text-sm font-bold text-slate-800">{t.roomStatusLabel}</label>
-                            <div className="flex items-center space-x-1.5 bg-slate-100 p-0.5 rounded-lg border border-slate-200">
-                                <button
-                                    type="button"
-                                    onClick={() => setRoomForm({...roomForm, isClosed: false})}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${!roomForm.isClosed ? 'bg-white text-emerald-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    {t.statusOpen}
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setRoomForm({
-                                        ...roomForm,
-                                        isClosed: true,
-                                        closureStartTime: roomForm.closureStartTime ?? BOOKING_START_HOUR,
-                                        closureEndTime: roomForm.closureEndTime &&
-                                            roomForm.closureEndTime > (roomForm.closureStartTime ?? BOOKING_START_HOUR) &&
-                                            roomForm.closureEndTime <= BOOKING_END_HOUR
-                                                ? roomForm.closureEndTime
-                                                : Math.min((roomForm.closureStartTime ?? BOOKING_START_HOUR) + 1, BOOKING_END_HOUR)
-                                    })}
-                                    className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${roomForm.isClosed ? 'bg-rose-500 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                >
-                                    {t.statusClosed}
-                                </button>
-                            </div>
-                        </div>
-
-                        {roomForm.isClosed && (
-                            <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3 animate-in slide-in-from-top-2 duration-150">
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureReasonLabel}</label>
-                                    <select
-                                        value={
-                                          roomForm.closureReason === ''
-                                            ? ''
-                                            : CLOSURE_REASONS.some(r => r.key === roomForm.closureReason)
-                                              ? roomForm.closureReason
-                                              : 'Other'
-                                        }
-                                        onChange={(e) => {
-                                          const val = e.target.value;
-                                          if (val === 'Other') {
-                                            // Set a dynamic placeholder reason for User to start editing
-                                            setRoomForm({ ...roomForm, closureReason: t.customRenovationReason });
-                                          } else {
-                                            setRoomForm({ ...roomForm, closureReason: val });
-                                          }
-                                        }}
-                                        className="w-full px-3 py-2 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                    >
-                                        <option value="">{t.closureReasonSelectPlaceholder}</option>
-                                        {CLOSURE_REASONS.map(r => (
-                                          <option key={r.key} value={r.key}>
-                                            {language === 'th' ? r.labelTh : r.labelEn}
-                                          </option>
-                                        ))}
-                                    </select>
-
-                                    {/* Show text input only if 'Other' is selected or a custom reason (not matching any standard values) exists */}
-                                    {(roomForm.closureReason !== '' && 
-                                      !CLOSURE_REASONS.some(r => r.key === roomForm.closureReason && r.key !== 'Other')) && (
-                                        <div className="mt-2 animate-in fade-in slide-in-from-top-1 duration-200">
-                                            <input 
-                                                type="text"
-                                                value={roomForm.closureReason === 'Custom Renovation' || roomForm.closureReason === 'ปรับปรุงห้อง' ? '' : roomForm.closureReason || ''}
-                                                onChange={(e) => setRoomForm({...roomForm, closureReason: e.target.value})}
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                                placeholder={t.customClosureReasonPlaceholder}
-                                            />
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureSelectedDateLabel}</label>
-                                    <input
-                                        type="date"
-                                        lang="en-US"
-                                        value={roomForm.closureStartDate || ''}
-                                        onChange={(e) => setRoomForm({
-                                            ...roomForm,
-                                            closureStartDate: e.target.value,
-                                            closureEndDate: e.target.value
-                                        })}
-                                        className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                                    />
-                                    {roomForm.closureStartDate && (
-                                        <p className="mt-1 text-[11px] font-bold text-slate-500">{formatDateInputDisplay(roomForm.closureStartDate)}</p>
-                                    )}
-                                    <p className="mt-1 text-[11px] font-semibold text-slate-500">{t.selectDisableDateFirst}</p>
-                                </div>
-
-                                {roomForm.closureStartDate && (
-                                    <div className="grid grid-cols-2 gap-3">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartTimeLabel}</label>
-                                            <select
-                                                value={roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR}
-                                                onChange={(e) => {
-                                                    const start = parseInt(e.target.value);
-                                                    const currentEnd = roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12;
-                                                    setRoomForm({
-                                                        ...roomForm,
-                                                        closureStartTime: start,
-                                                        closureEndTime: currentEnd <= start ? Math.min(start + 1, BOOKING_END_HOUR) : currentEnd
-                                                    });
-                                                }}
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                                            >
-                                                {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR).map(h => (
-                                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndTimeLabel}</label>
-                                            <select
-                                                value={roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12}
-                                                onChange={(e) => setRoomForm({...roomForm, closureEndTime: parseInt(e.target.value)})}
-                                                className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                                            >
-                                                {Array.from({
-                                                    length: BOOKING_END_HOUR - (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR)
-                                                }, (_, i) => i + (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR) + 1).map(h => (
-                                                    <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
+                        {roomForm.closureStartDate && (
+                          <p className="mt-1 text-[11px] font-bold text-slate-500">{formatDateInputDisplay(roomForm.closureStartDate)}</p>
                         )}
-                    </div>
-                    </div>
+                        <p className="mt-1 text-[11px] font-semibold text-slate-500">{t.selectDisableDateFirst}</p>
+                      </div>
 
-                    <div className="flex-shrink-0 border-t border-slate-100 bg-white p-6 flex space-x-3 shadow-[0_-8px_20px_rgba(15,23,42,0.04)]">
-                        <button 
-                            type="button"
-                            onClick={() => setIsRoomModalOpen(false)}
-                            className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
-                        >
-                            {t.cancel}
-                        </button>
-                        <button 
-                            type="submit"
-                            className="flex-1 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-bold flex justify-center items-center"
-                        >
-                            <Save className="w-4 h-4 mr-2" />
-                            {t.saveRoom}
-                        </button>
+                      {roomForm.closureStartDate && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureStartTimeLabel}</label>
+                            <select
+                              value={roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR}
+                              onChange={(e) => {
+                                const start = parseInt(e.target.value);
+                                const currentEnd = roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12;
+                                setRoomForm({
+                                  ...roomForm,
+                                  closureStartTime: start,
+                                  closureEndTime: currentEnd <= start ? Math.min(start + 1, BOOKING_END_HOUR) : currentEnd
+                                });
+                              }}
+                              className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                            >
+                              {Array.from({ length: BOOKING_END_HOUR - BOOKING_START_HOUR }, (_, i) => i + BOOKING_START_HOUR).map(h => (
+                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                              ))}
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-xs font-bold text-slate-600 mb-1">{t.closureEndTimeLabel}</label>
+                            <select
+                              value={roomForm.closureEndTime !== undefined ? roomForm.closureEndTime : 12}
+                              onChange={(e) => setRoomForm({ ...roomForm, closureEndTime: parseInt(e.target.value) })}
+                              className="w-full px-3 py-1.5 text-sm border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                            >
+                              {Array.from({
+                                length: BOOKING_END_HOUR - (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR)
+                              }, (_, i) => i + (roomForm.closureStartTime !== undefined ? roomForm.closureStartTime : BOOKING_START_HOUR) + 1).map(h => (
+                                <option key={h} value={h}>{String(h).padStart(2, '0')}:00</option>
+                              ))}
+                            </select>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                </form>
-            </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-shrink-0 border-t border-slate-100 bg-white p-6 flex space-x-3 shadow-[0_-8px_20px_rgba(15,23,42,0.04)]">
+                <button
+                  type="button"
+                  onClick={() => setIsRoomModalOpen(false)}
+                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-bold flex justify-center items-center"
+                >
+                  <Save className="w-4 h-4 mr-2" />
+                  {t.saveRoom}
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
       )}
 
       {/* Add User Modal */}
       {isUserModalOpen && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl shadow-xl w-full max-w-md animate-in fade-in zoom-in duration-200">
-                <div className="flex justify-between items-center p-6 border-b border-slate-100">
-                    <h3 className="text-lg font-bold text-slate-900">{t.addNewAdmin}</h3>
-                    <button
-                        onClick={() => {
-                            setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-                            setIsUserModalOpen(false);
-                        }}
-                        className="text-slate-400 hover:text-slate-600 transition-colors"
-                    >
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-                
-                <form onSubmit={handleCreateUser} className="p-6 space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {t.username} <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                required
-                                type="text"
-                                value={newUserForm.username}
-                                onChange={(e) => setNewUserForm({...newUserForm, username: e.target.value})}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                                placeholder={t.usernameEmailPlaceholder}
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {t.password} <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                required
-                                type="password"
-                                value={newUserForm.password}
-                                onChange={(e) => {
-                                    const password = e.target.value;
-                                    setNewUserForm({...newUserForm, password});
-                                    setNewUserFormErrors(prev => ({
-                                        ...prev,
-                                        password: prev.password && validatePassword(password.trim()) ? '' : prev.password
-                                    }));
-                                }}
-                                aria-invalid={Boolean(newUserFormErrors.password)}
-                                aria-describedby={newUserFormErrors.password ? 'new-admin-password-error' : undefined}
-                                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${
-                                    newUserFormErrors.password
-                                        ? 'border-rose-300 focus:ring-rose-500'
-                                        : 'border-slate-300 focus:ring-brand-500'
-                                }`}
-                                placeholder={t.passwordPlaceholder}
-                            />
-                            {newUserFormErrors.password && (
-                                <p id="new-admin-password-error" className="mt-1 text-xs font-semibold text-rose-600">
-                                    {newUserFormErrors.password}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {t.employeeId} <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                required
-                                id="new-admin-employee-id"
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={7}
-                                value={newUserForm.employeeId}
-                                onChange={(e) => {
-                                    const employeeId = e.target.value.replace(/\D/g, '').slice(0, 7);
-                                    setNewUserForm({...newUserForm, employeeId});
-                                    setNewUserFormErrors(prev => ({
-                                        ...prev,
-                                        employeeId: prev.employeeId && /^\d{7}$/.test(employeeId.trim()) ? '' : prev.employeeId
-                                    }));
-                                }}
-                                aria-invalid={Boolean(newUserFormErrors.employeeId)}
-                                aria-describedby={newUserFormErrors.employeeId ? 'new-admin-employee-id-error' : undefined}
-                                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${
-                                    newUserFormErrors.employeeId
-                                        ? 'border-rose-300 focus:ring-rose-500'
-                                        : 'border-slate-300 focus:ring-brand-500'
-                                }`}
-                                placeholder={t.employeeIdPlaceholder}
-                            />
-                            {newUserFormErrors.employeeId && (
-                                <p id="new-admin-employee-id-error" className="mt-1 text-xs font-semibold text-rose-600">
-                                    {newUserFormErrors.employeeId}
-                                </p>
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {t.deskPhone} <span className="text-rose-500">*</span>
-                            </label>
-                            <input
-                                required
-                                id="new-admin-phone"
-                                type="text"
-                                inputMode="numeric"
-                                maxLength={4}
-                                value={newUserForm.phone}
-                                onChange={(e) => {
-                                    const phone = e.target.value.replace(/\D/g, '').slice(0, 4);
-                                    setNewUserForm({...newUserForm, phone});
-                                    setNewUserFormErrors(prev => ({
-                                        ...prev,
-                                        phone: prev.phone && /^\d{4}$/.test(phone.trim()) ? '' : prev.phone
-                                    }));
-                                }}
-                                aria-invalid={Boolean(newUserFormErrors.phone)}
-                                aria-describedby={newUserFormErrors.phone ? 'new-admin-phone-error' : undefined}
-                                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${
-                                    newUserFormErrors.phone
-                                        ? 'border-rose-300 focus:ring-rose-500'
-                                        : 'border-slate-300 focus:ring-brand-500'
-                                }`}
-                                placeholder={t.deskPhonePlaceholder}
-                            />
-                            {newUserFormErrors.phone && (
-                                <p id="new-admin-phone-error" className="mt-1 text-xs font-semibold text-rose-600">
-                                    {newUserFormErrors.phone}
-                                </p>
-                            )}
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {t.department} <span className="text-rose-500">*</span>
-                            </label>
-                            <select
-                                required
-                                value={newUserForm.department}
-                                onChange={(e) => setNewUserForm({...newUserForm, department: e.target.value})}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                            >
-                                {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
-                                    <option key={value} value={value}>{label}</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div>
-                            <label className="block text-sm font-semibold text-slate-700 mb-1">
-                                {t.role} <span className="text-rose-500">*</span>
-                            </label>
-                            <select
-                                required
-                                value={newUserForm.role}
-                                onChange={(e) => setNewUserForm({...newUserForm, role: e.target.value as AdminRole})}
-                                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
-                            >
-                                <option value="APPROVER">{t.approverRoleLabel}</option>
-                                <option value="SUPER_ADMIN">{t.superAdminRoleLabel}</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <div className="pt-4 flex space-x-3">
-                        <button 
-                            type="button"
-                            onClick={() => {
-                                setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
-                                setIsUserModalOpen(false);
-                            }}
-                            className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
-                        >
-                            {t.cancel}
-                        </button>
-                        <button 
-                            type="submit"
-                            className="flex-1 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-bold"
-                        >
-                            {t.createAdminUser}
-                        </button>
-                    </div>
-                </form>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md animate-in fade-in zoom-in duration-200">
+            <div className="flex justify-between items-center p-6 border-b border-slate-100">
+              <h3 className="text-lg font-bold text-slate-900">{t.addNewAdmin}</h3>
+              <button
+                onClick={() => {
+                  setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
+                  setIsUserModalOpen(false);
+                }}
+                className="text-slate-400 hover:text-slate-600 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
+
+            <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    {t.username} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="text"
+                    value={newUserForm.username}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, username: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    placeholder={t.usernameEmailPlaceholder}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    {t.password} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    required
+                    type="password"
+                    value={newUserForm.password}
+                    onChange={(e) => {
+                      const password = e.target.value;
+                      setNewUserForm({ ...newUserForm, password });
+                      setNewUserFormErrors(prev => ({
+                        ...prev,
+                        password: prev.password && validatePassword(password.trim()) ? '' : prev.password
+                      }));
+                    }}
+                    aria-invalid={Boolean(newUserFormErrors.password)}
+                    aria-describedby={newUserFormErrors.password ? 'new-admin-password-error' : undefined}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${newUserFormErrors.password
+                        ? 'border-rose-300 focus:ring-rose-500'
+                        : 'border-slate-300 focus:ring-brand-500'
+                      }`}
+                    placeholder={t.passwordPlaceholder}
+                  />
+                  {newUserFormErrors.password && (
+                    <p id="new-admin-password-error" className="mt-1 text-xs font-semibold text-rose-600">
+                      {newUserFormErrors.password}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    {t.employeeId} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    required
+                    id="new-admin-employee-id"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={7}
+                    value={newUserForm.employeeId}
+                    onChange={(e) => {
+                      const employeeId = e.target.value.replace(/\D/g, '').slice(0, 7);
+                      setNewUserForm({ ...newUserForm, employeeId });
+                      setNewUserFormErrors(prev => ({
+                        ...prev,
+                        employeeId: prev.employeeId && /^\d{7}$/.test(employeeId.trim()) ? '' : prev.employeeId
+                      }));
+                    }}
+                    aria-invalid={Boolean(newUserFormErrors.employeeId)}
+                    aria-describedby={newUserFormErrors.employeeId ? 'new-admin-employee-id-error' : undefined}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${newUserFormErrors.employeeId
+                        ? 'border-rose-300 focus:ring-rose-500'
+                        : 'border-slate-300 focus:ring-brand-500'
+                      }`}
+                    placeholder={t.employeeIdPlaceholder}
+                  />
+                  {newUserFormErrors.employeeId && (
+                    <p id="new-admin-employee-id-error" className="mt-1 text-xs font-semibold text-rose-600">
+                      {newUserFormErrors.employeeId}
+                    </p>
+                  )}
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    {t.deskPhone} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    required
+                    id="new-admin-phone"
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={4}
+                    value={newUserForm.phone}
+                    onChange={(e) => {
+                      const phone = e.target.value.replace(/\D/g, '').slice(0, 4);
+                      setNewUserForm({ ...newUserForm, phone });
+                      setNewUserFormErrors(prev => ({
+                        ...prev,
+                        phone: prev.phone && /^\d{4}$/.test(phone.trim()) ? '' : prev.phone
+                      }));
+                    }}
+                    aria-invalid={Boolean(newUserFormErrors.phone)}
+                    aria-describedby={newUserFormErrors.phone ? 'new-admin-phone-error' : undefined}
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${newUserFormErrors.phone
+                        ? 'border-rose-300 focus:ring-rose-500'
+                        : 'border-slate-300 focus:ring-brand-500'
+                      }`}
+                    placeholder={t.deskPhonePlaceholder}
+                  />
+                  {newUserFormErrors.phone && (
+                    <p id="new-admin-phone-error" className="mt-1 text-xs font-semibold text-rose-600">
+                      {newUserFormErrors.phone}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    {t.department} <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={newUserForm.department}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, department: e.target.value })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                  >
+                    {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-semibold text-slate-700 mb-1">
+                    {t.role} <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={newUserForm.role}
+                    onChange={(e) => setNewUserForm({ ...newUserForm, role: e.target.value as AdminRole })}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                  >
+                    <option value="APPROVER">{t.approverRoleLabel}</option>
+                    <option value="SUPER_ADMIN">{t.superAdminRoleLabel}</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="pt-4 flex space-x-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewUserFormErrors({ password: '', employeeId: '', phone: '' });
+                    setIsUserModalOpen(false);
+                  }}
+                  className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-semibold"
+                >
+                  {t.cancel}
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-bold"
+                >
+                  {t.createAdminUser}
+                </button>
+              </div>
+            </form>
           </div>
+        </div>
       )}
 
       {/* Confirmation Modal */}

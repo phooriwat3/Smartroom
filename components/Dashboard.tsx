@@ -26,6 +26,7 @@ import {
 import { TRANSLATIONS, formatTimeString, formatDate, translateText, isRoomClosedAt, isRoomClosedAllDay, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import { getBookingDepartmentBadgeClass, getBookingDepartmentClassForState } from '../bookingVisualStyles';
 import CheckInValidationModal from './CheckInValidationModal';
+import ConfirmationModal from './ConfirmationModal';
 
 import { BOOKABLE_HOURS, BOOKING_START_HOUR, BOOKING_END_HOUR, DEPARTMENTS } from '../constants';
 import { functions } from '../firebase';
@@ -152,6 +153,17 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [selectedHours, setSelectedHours] = useState<number[]>([]);
   const [bookingError, setBookingError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [emailConfirmModal, setEmailConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => { },
+  });
   const [internalActiveView, setInternalActiveView] = useState<DashboardMainView>('status');
   const dashboardActiveView = activeView || internalActiveView;
   const setDashboardActiveView = (view: DashboardMainView) => {
@@ -340,20 +352,20 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (state === 'verified') return t.verified;
     if (state === 'roomInUse') return t.roomInUseStatus;
     if (state === 'used') return t.usedRoomStatus;
-    return t.confirmed;
+    return t.waitForVerify;
   };
 
-  const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string) => {
+  const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string, context?: 'timeline') => {
     if (state === 'noCheckIn') return 'bg-rose-100 text-rose-800 border-rose-200';
     if (state === 'pending') return 'bg-orange-100 text-orange-800 border-orange-200';
 
-    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
+    const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department, context ? { context } : undefined) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900 border-sky-200'} animate-pulse`;
     if (departmentBadgeClass) return departmentBadgeClass;
-    if (state === 'waitForVerify') return 'bg-amber-100 text-amber-900 border-amber-200';
+    if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-200';
     if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border-cyan-200';
     if (state === 'used') return 'bg-slate-100 text-slate-600 border-slate-205';
-    return 'bg-emerald-100 text-emerald-700 border-emerald-200';
+    return 'bg-amber-100 text-amber-900';
   };
 
   // Helper inside All-Room cards stats calculation
@@ -577,11 +589,21 @@ const Dashboard: React.FC<DashboardProps> = ({
     const selectedEmail = getMailboxEmail(user);
     if (!selectedEmail) return;
 
-    setSelectedEmailUser(user);
-    setEmail(selectedEmail);
-    setEmailSuggestions([]);
-    setIsEmailSuggestionsOpen(false);
-    setBookingError(null);
+    setEmailConfirmModal({
+      isOpen: true,
+      title: language === 'th' ? 'ยืนยันอีเมลของคุณ' : 'Confirm Your Email',
+      message: language === 'th'
+        ? `นี่คืออีเมลของคุณใช่หรือไม่?\n${selectedEmail}\n\nกรุณาตรวจสอบให้แน่ใจว่าเป็นอีเมลของคุณเอง`
+        : `Is this your email?\n${selectedEmail}\n\nPlease check and confirm that this is your own email.`,
+      onConfirm: () => {
+        setSelectedEmailUser(user);
+        setEmail(selectedEmail);
+        setEmailSuggestions([]);
+        setIsEmailSuggestionsOpen(false);
+        setBookingError(null);
+        setEmailConfirmModal(prev => ({ ...prev, isOpen: false }));
+      }
+    });
   };
 
   const validateExactYageoMailbox = async (normalizedEmail: string) => {
@@ -605,6 +627,62 @@ const Dashboard: React.FC<DashboardProps> = ({
       : { ...(data.user || {}), mail: normalizedEmail };
   };
 
+  const executeSubmitBooking = async (normalizedEmail: string) => {
+    setIsSubmitting(true);
+    try {
+      const sorted = [...selectedHours].sort((a, b) => a - b);
+      const startHour = sorted[0];
+      const endHour = sorted[sorted.length - 1] + 1;
+
+      const startTime = new Date(selectedDateObj);
+      startTime.setHours(startHour, 0, 0, 0);
+
+      const endTime = new Date(selectedDateObj);
+      endTime.setHours(endHour, 0, 0, 0);
+
+      const verifiedEmailUser = await validateExactYageoMailbox(normalizedEmail);
+      setSelectedEmailUser(verifiedEmailUser);
+
+      const bookingData = {
+        roomId: selectedRoom!.id,
+        roomName: selectedRoom!.name,
+        title: title.trim(),
+        organizer: organizer.trim(),
+        department,
+        employeeId: employeeId.trim(),
+        email: normalizedEmail,
+        emailDisplayName: verifiedEmailUser.displayName || '',
+        emailJobTitle: verifiedEmailUser.jobTitle || '',
+        emailDepartment: verifiedEmailUser.department || '',
+        deskNumber: deskNumber.trim(),
+        startTime,
+        endTime,
+        status: BookingStatus.CONFIRMED,
+        createdAt: new Date()
+      };
+
+      const success = await onConfirmBooking!(bookingData);
+      if (success) {
+        setSelectedHours([]);
+        setTitle('');
+        setOrganizer('');
+        setEmployeeId('');
+        setEmail('');
+        setSelectedEmailUser(null);
+        setDepartment('');
+        setDeskNumber('');
+        setIsDetailsModalOpen(false);
+        setBookingError(null);
+      } else {
+        setBookingError('Unable to complete booking. Please check the email, selected times, and room availability.');
+      }
+    } catch (err: any) {
+      setBookingError(err.message || 'Error occurred during booking');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   const handleInlineSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!onConfirmBooking || !selectedRoom) return;
@@ -620,7 +698,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     if (!title.trim()) {
-      setBookingError(language === 'th' ? 'กรุณากรอกหัวข้อการประชุม' : 'Please fill in the meeting title.');
+      setBookingError(language === 'th' ? 'กรุณากรอกหัวข้อการประชุม' : 'Please fill in the purpose.');
       return;
     }
 
@@ -672,60 +750,18 @@ const Dashboard: React.FC<DashboardProps> = ({
     }
 
     setBookingError(null);
-    setIsSubmitting(true);
 
-    try {
-      const sorted = [...selectedHours].sort((a, b) => a - b);
-      const startHour = sorted[0];
-      const endHour = sorted[sorted.length - 1] + 1;
-
-      const startTime = new Date(selectedDateObj);
-      startTime.setHours(startHour, 0, 0, 0);
-
-      const endTime = new Date(selectedDateObj);
-      endTime.setHours(endHour, 0, 0, 0);
-
-      const verifiedEmailUser = await validateExactYageoMailbox(normalizedEmail);
-      setSelectedEmailUser(verifiedEmailUser);
-
-      const bookingData = {
-        roomId: selectedRoom.id,
-        roomName: selectedRoom.name,
-        title: title.trim(),
-        organizer: organizer.trim(),
-        department,
-        employeeId: employeeId.trim(),
-        email: normalizedEmail,
-        emailDisplayName: verifiedEmailUser.displayName || '',
-        emailJobTitle: verifiedEmailUser.jobTitle || '',
-        emailDepartment: verifiedEmailUser.department || '',
-        deskNumber: deskNumber.trim(),
-        startTime,
-        endTime,
-        status: BookingStatus.CONFIRMED,
-        createdAt: new Date()
-      };
-
-      const success = await onConfirmBooking(bookingData);
-      if (success) {
-        setSelectedHours([]);
-        setTitle('');
-        setOrganizer('');
-        setEmployeeId('');
-        setEmail('');
-        setSelectedEmailUser(null);
-        setDepartment('');
-        setDeskNumber('');
-        setIsDetailsModalOpen(false);
-        setBookingError(null);
-      } else {
-        setBookingError('Unable to complete booking. Please check the email, selected times, and room availability.');
+    setEmailConfirmModal({
+      isOpen: true,
+      title: language === 'th' ? 'ยืนยันอีเมลของคุณ' : 'Verify Booker Email',
+      message: language === 'th'
+        ? `กรุณายืนยันว่านี่คืออีเมลของคุณจริงหรือไม่:\n${normalizedEmail}\n\n(หากไม่ใช่อีเมลของคุณ คุณจะไม่ได้รับอีเมลยืนยันการใช้ห้อง)`
+        : `Please confirm if this is your email address:\n${normalizedEmail}\n\n(If it is not your email, you will not receive the verification link.)`,
+      onConfirm: () => {
+        setEmailConfirmModal(prev => ({ ...prev, isOpen: false }));
+        void executeSubmitBooking(normalizedEmail);
       }
-    } catch (err: any) {
-      setBookingError(err.message || 'Error occurred during booking');
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   const handleReleaseAllBookings = async () => {
@@ -1245,7 +1281,7 @@ const Dashboard: React.FC<DashboardProps> = ({
 
                                   renderedCells.push(
                                     <td key={`${hour}-${booking.id}`} colSpan={colSpan} className="px-1.5 py-1.5 relative h-24 border-r border-cyan-50 timeline-grid-slot">
-                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department)}
+                                      <div className={`w-full h-full rounded-md flex flex-col justify-start py-1.5 text-left gap-0.5 border px-2.5 font-semibold overflow-hidden ${getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department, { context: 'timeline' })}
                                           ${isNoCheckInStatus
                                           ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold'
                                           : isPending
@@ -1256,7 +1292,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                                       `}
                                         title={`[${getBookingDisplayLabel(booking)}] ${translateText(booking.title, language)} (${booking.organizer} - ${formatDepartment(booking.department) || '-'}) [${formatTimeValue(booking.startTime.getHours(), language)} - ${formatTimeValue(booking.endTime.getHours(), language)}]`}
                                       >
-                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
+                                        <span className={`self-start text-[8.5px] px-1.5 py-0.5 rounded font-bold border max-w-full truncate ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
                                           {getBookingDisplayLabel(booking)}
                                         </span>
                                         <div className="truncate text-[10px] text-slate-800 font-bold w-full">
@@ -1353,7 +1389,7 @@ const Dashboard: React.FC<DashboardProps> = ({
               </h3>
               <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] font-semibold">
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-emerald-50 border border-emerald-300 rounded mr-1"></div> {t.free}</div>
-                <div className="flex items-center"><div className="w-3.5 h-3.5 bg-brand-500 border border-brand-600 rounded mr-1"></div> {language === 'th' ? 'เลือกกำลังจอง' : 'Selected (To Book)'}</div>
+                <div className="flex items-center"><div className="w-3.5 h-3.5 bg-brand-500 border border-brand-600 rounded mr-1"></div> {language === 'th' ? 'เลือกเเล้ว' : 'Selected (To Book)'}</div>
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-gradient-to-r from-orange-300 to-yellow-200 border border-orange-400 rounded mr-1"></div> {t.booked}</div>
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-slate-100 border border-slate-205 rounded mr-1"></div> {language === 'th' ? 'หมดเวลาจอง' : 'Passed'}</div>
                 <div className="flex items-center"><div className="w-3.5 h-3.5 bg-slate-100 border border-slate-300 rounded mr-1"></div> {temporarilyDisabledLabel}</div>
@@ -1396,7 +1432,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                             });
                           }
                         }}
-                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department) : ''}
+                        className={`absolute inset-0 rounded-md border flex items-center px-2.5 py-1 transition-all duration-200 ${status === 'occupied' && booking ? getBookingDepartmentClassForState(getBookingDisplayState(booking), booking.department, { context: 'timeline' }) : ''}
                           ${status === 'occupied'
                             ? isNoCheckInStatus
                               ? 'bg-rose-50 border-rose-300 text-rose-700 font-semibold cursor-not-allowed'
@@ -1428,7 +1464,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {booking?.organizer || '-'}
                             </span>
                             {booking && (
-                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department)}`}>
+                              <span className={`text-[8.5px] px-1.5 py-0.5 rounded font-bold border shrink-0 ${getBookingStatusBadgeClass(getBookingDisplayState(booking), booking.department, 'timeline')}`}>
                                 {getBookingDisplayLabel(booking)}
                               </span>
                             )}
@@ -1445,7 +1481,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                               {title ? title : (language === 'th' ? 'กำลังทำจองชั่วโมงนี้' : 'Selected Selection')}
                             </span>
                             <span className="text-[9px] uppercase font-mono bg-white/20 px-1.5 py-0.5 rounded text-white font-bold">
-                              {language === 'th' ? 'เลือกแล้ว (จอง)' : 'Selected'}
+                              {language === 'th' ? 'เลือกแล้ว' : 'Selected'}
                             </span>
                           </div>
                         ) : isPast ? (
@@ -1535,7 +1571,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     ) : (
                       <p className="text-[11px] font-semibold mt-1">
                         {language === 'th'
-                          ? 'กรุณาคลิกเลือกช่วงเวลาต้องการจองบนตารางเวลา (ฝั่งซ้าย)'
+                          ? 'กรุณาคลิกเลือกช่วงเวลาต้องการจองบนตารางเวลา'
                           : 'Please click to select your desired hours on the left timeline'}
                       </p>
                     )}
@@ -1567,7 +1603,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                         }}
                         className="w-full py-1.5 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all flex items-center justify-center"
                       >
-                        {language === 'th' ? 'ยกเลิกการเลือกเวลา (Clear)' : 'Clear Selection'}
+                        {language === 'th' ? 'ยกเลิการเลือก' : 'Clear Selection'}
                       </button>
                     </div>
                   ) : singleRoomBookings.length > 0 ? (
@@ -1578,7 +1614,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   ) : (
                     <div className="p-3 bg-slate-50 border border-slate-200 text-slate-500 text-center rounded-xl text-xs font-bold leading-relaxed">
                       {language === 'th'
-                        ? '👉 กรุณาคลิกเลือกเวลาก่อนเริ่มทำการจอง (จากตารางฝั่งซ้าย)'
+                        ? '👉 กรุณาคลิกเลือกเวลาก่อนเริ่มทำการจอง'
                         : '👉 Click hour blocks on the left timeline to start booking'}
                     </div>
                   )}
@@ -1652,8 +1688,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 <AlertCircle className="w-4 h-4 mr-2 text-rose-500 flex-shrink-0 mt-0.5 animate-pulse" />
                 <span>
                   {language === 'th'
-                    ? '💡 หากต้องการยกเลิกหรือลดชั่วโมงการจอง กรุณาติดต่อผู้ดูแลระบบ (Admin)'
-                    : '💡 To cancel or reduce booking hours, please contact the Administrator (Admin)'}
+                    ? '💡 หากต้องการยกเลิกหรือเเก้ไขการจอง กรุณาติดต่อหมายเลข 9'
+                    : '💡 To cancel or edit a booking, please call Information at extension 9.'}
                 </span>
               </div>
             </div>
@@ -1678,7 +1714,7 @@ const Dashboard: React.FC<DashboardProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-5 text-white flex justify-between items-center">
+            <div className="bg-gradient-to-r from-brand-600 to-brand-800 p-5 text-white flex justify-between items-center rounded-t-2xl">
               <div>
                 <h3 className="font-bold text-lg leading-tight">
                   {language === 'th' ? `ระบุรายละเอียดการจอง` : `Enter Booking Details`}
@@ -1718,33 +1754,12 @@ const Dashboard: React.FC<DashboardProps> = ({
                 </label>
                 <input
                   type="text"
-                  list="meeting-titles-list"
                   required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  placeholder={language === 'th' ? 'เช่น ประชุมแผนงาน Q3' : 'e.g. Q3 Strategy Planning'}
+                  placeholder={language === 'th' ? 'ประชุม' : 'Meeting'}
                   className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                 />
-                <datalist id="meeting-titles-list">
-                  {language === 'th' ? (
-                    <>
-                      <option value="Meeting" />
-                      <option value="Yield Meeting" />
-                      <option value="อบรมส่งเสริมสุขภาพใจ" />
-                      <option value="อบรม" />
-                      <option value="อบรมช่างเทคนิค" />
-                      <option value="Training" />
-                    </>
-                  ) : (
-                    <>
-                      <option value="Meeting" />
-                      <option value="Yield Meeting" />
-                      <option value="Mental Health Training" />
-                      <option value="Training" />
-                      <option value="Technician Training" />
-                    </>
-                  )}
-                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1757,7 +1772,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                     required
                     value={organizer}
                     onChange={(e) => setOrganizer(e.target.value)}
-                    placeholder={language === 'th' ? 'สมชาย' : 'John'}
+                    placeholder={language === 'th' ? 'Somchai' : 'Somchai'}
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                   />
                 </div>
@@ -1771,7 +1786,40 @@ const Dashboard: React.FC<DashboardProps> = ({
                     maxLength={7}
                     value={employeeId}
                     onChange={(e) => setEmployeeId(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1234567"
+                    placeholder="2606801"
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {t.department} <span className="text-rose-500">*</span>
+                  </label>
+                  <select
+                    required
+                    value={department}
+                    onChange={(e) => setDepartment(e.target.value)}
+                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-semibold text-slate-800"
+                  >
+                    <option value="">-- {t.selectDept} --</option>
+                    {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    {language === 'th' ? 'เบอร์โต๊ะ' : 'Desk Number'} <span className="text-rose-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={4}
+                    value={deskNumber}
+                    onChange={(e) => setDeskNumber(e.target.value.replace(/\D/g, ''))}
+                    placeholder="2516"
                     className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
                   />
                 </div>
@@ -1793,7 +1841,7 @@ const Dashboard: React.FC<DashboardProps> = ({
                   }}
                   onFocus={() => setIsEmailSuggestionsOpen(!selectedEmailUser && email.trim().length >= 2)}
                   onBlur={() => window.setTimeout(() => setIsEmailSuggestionsOpen(false), 150)}
-                  placeholder="name@yageo.com"
+                  placeholder="Somchai.Jaidee@yageo.com"
                   role="combobox"
                   aria-expanded={isEmailSuggestionsOpen}
                   aria-controls="yageo-email-suggestions"
@@ -1881,39 +1929,6 @@ const Dashboard: React.FC<DashboardProps> = ({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {t.department} <span className="text-rose-500">*</span>
-                  </label>
-                  <select
-                    required
-                    value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 bg-white focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-semibold text-slate-800"
-                  >
-                    <option value="">-- {t.selectDept} --</option>
-                    {getDepartmentSelectOptions(DEPARTMENTS).map(({ value, label }) => (
-                      <option key={value} value={value}>{label}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                    {language === 'th' ? 'เบอร์โต๊ะ (ตัวเลข 4 หลัก)' : 'Desk Number (4 digits)'} <span className="text-rose-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={4}
-                    value={deskNumber}
-                    onChange={(e) => setDeskNumber(e.target.value.replace(/\D/g, ''))}
-                    placeholder="1234"
-                    className="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 focus:outline-none focus:border-brand-500 focus:ring-1 focus:ring-brand-500 font-medium text-slate-800"
-                  />
-                </div>
-              </div>
-
               {/* Error feedback */}
               {bookingError && (
                 <div className="p-3 bg-rose-50 border border-rose-250 rounded-lg flex items-start text-xs text-rose-700 font-bold">
@@ -1947,6 +1962,17 @@ const Dashboard: React.FC<DashboardProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {emailConfirmModal.isOpen && (
+        <ConfirmationModal
+          isOpen={emailConfirmModal.isOpen}
+          title={emailConfirmModal.title}
+          message={emailConfirmModal.message}
+          confirmText={language === 'th' ? 'ใช่, ถูกต้อง' : 'Yes, correct'}
+          cancelText={language === 'th' ? 'ไม่ใช่, ตรวจสอบอีกครั้ง' : 'No, let me check'}
+          onConfirm={emailConfirmModal.onConfirm}
+          onCancel={() => setEmailConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        />
       )}
     </div>
   );

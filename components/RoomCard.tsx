@@ -30,7 +30,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
     if (state === 'verified') return t.verified;
     if (state === 'roomInUse') return t.roomInUseStatus;
     if (state === 'used') return t.usedRoomStatus;
-    return t.confirmed;
+    return t.waitForVerify;
   };
 
   const getBookingStatusBadgeClass = (state: BookingDisplayState, department?: string) => {
@@ -39,7 +39,11 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
 
     const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
     if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900'} animate-pulse`;
-    return departmentBadgeClass || 'bg-emerald-100 text-emerald-700';
+    if (departmentBadgeClass) return departmentBadgeClass;
+    if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-250';
+    if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border border-cyan-200';
+    if (state === 'used') return 'bg-slate-100 text-slate-600';
+    return 'bg-amber-100 text-amber-900';
   };
 
 
@@ -135,21 +139,21 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
               {todaysBookings.slice(0, 2).map(booking => {
                 const displayState = getBookingDisplayState(booking);
                 return (
-                <div key={booking.id} className={`flex justify-between items-center gap-2 text-sm rounded-lg px-2 py-1 border ${getBookingDepartmentClassForState(displayState, booking.department)}`}>
-                  <div className="flex items-center truncate min-w-0">
-                    <span className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${getBookingDepartmentDotClass(booking.department)}`}></span>
-                    <span className="font-medium truncate text-inherit">{translateText(booking.title, language)}</span>
-                    <span
-                      title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
-                      className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-bold whitespace-nowrap ${getBookingStatusBadgeClass(displayState, booking.department)}`}
-                    >
-                      {getBookingDisplayLabel(booking)}
+                  <div key={booking.id} className={`flex justify-between items-center gap-2 text-sm rounded-lg px-2 py-1 border ${getBookingDepartmentClassForState(displayState, booking.department)}`}>
+                    <div className="flex items-center truncate min-w-0">
+                      <span className={`w-2 h-2 rounded-full mr-2 flex-shrink-0 ${getBookingDepartmentDotClass(booking.department)}`}></span>
+                      <span className="font-medium truncate text-inherit">{translateText(booking.title, language)}</span>
+                      <span
+                        title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
+                        className={`ml-1.5 text-[9px] px-1 py-0.5 rounded font-bold whitespace-nowrap ${getBookingStatusBadgeClass(displayState, booking.department)}`}
+                      >
+                        {getBookingDisplayLabel(booking)}
+                      </span>
+                    </div>
+                    <span className="text-slate-500 text-xs flex-shrink-0">
+                      {formatTimeString(getHHMM(booking.startTime), language)}
                     </span>
                   </div>
-                  <span className="text-slate-500 text-xs flex-shrink-0">
-                    {formatTimeString(getHHMM(booking.startTime), language)}
-                  </span>
-                </div>
                 );
               })}
               {todaysBookings.length > 2 && <p className="text-xs text-slate-400">+{todaysBookings.length - 2} {t.more}</p>}

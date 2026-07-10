@@ -72,7 +72,7 @@ const copy = {
     rulesTitle: 'ข้อตกลงและความรับผิดชอบ',
     rules: [
       ['กฎการจอง', 'จองผ่านระบบ TOKIN Smart Room เท่านั้น ใช้ข้อมูลส่วนตัวและข้อมูลการประชุมที่ถูกต้อง เลือกห้องให้เหมาะสม และไม่จองเกินเวลาที่จำเป็น'],
-      ['การยืนยันและการไม่เช็คอิน', 'รายการที่รอยืนยันจะแสดงสถานะ Wait for Verify หากไม่ได้ยืนยันผ่านอีเมล/เช็คอินภายในช่วงเวลาที่กำหนด รายการอาจถูกยกเลิกหรือปล่อยให้ผู้อื่นจองได้'],
+      ['การยืนยันและการไม่เช็คอิน', 'รายการที่รอยืนยันจะแสดงสถานะรอผู้ใช้งานยืนยัน หากไม่ได้ยืนยันผ่านอีเมล/เช็คอินภายในช่วงเวลาที่กำหนด รายการอาจถูกยกเลิกหรือปล่อยให้ผู้อื่นจองได้'],
       ['การยกเลิกหรือแก้ไข', 'ควรยกเลิกหรือแจ้งแก้ไขล่วงหน้าให้เร็วที่สุด ผู้ดูแลระบบสามารถแก้ไขหรือลบรายการได้เมื่อข้อมูลผิด ยกเลิก หรือมีความจำเป็นด้านการปฏิบัติงาน'],
       ['ซ่อมบำรุงและปิดใช้งานชั่วคราว', 'ห้องที่ถูกปิดใช้งาน อยู่ระหว่างซ่อมบำรุง หรือไม่พร้อมใช้งาน จะไม่สามารถจองในวันและเวลาที่ได้รับผลกระทบ ผู้ดูแลระบบควรระบุเหตุผลให้ชัดเจน'],
       ['ความรับผิดชอบของผู้ใช้', 'ผู้ใช้ต้องรักษาความสะอาด ใช้ห้องไม่เกินความจุ ออกจากห้องตรงเวลา ปิดอุปกรณ์/ไฟ/แอร์ตามความเหมาะสม และแจ้งปัญหาห้องเมื่อพบความผิดปกติ'],
@@ -172,7 +172,7 @@ export const UserGuideModal: React.FC<UserGuideModalProps> = ({ language, rooms,
               </div>
               <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 flex items-start space-x-3">
                 <MailCheck className="w-5 h-5 text-emerald-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs font-semibold text-emerald-800">{language === 'th' ? 'รายการที่รอยืนยันควรใช้สถานะ Wait for Verify เพื่อให้ผู้ใช้เข้าใจว่าต้องยืนยันผ่านอีเมล/เช็คอิน' : 'Bookings waiting for verification should display Wait for Verify so users know email/check-in verification is still required.'}</p>
+                <p className="text-xs font-semibold text-emerald-800">{language === 'th' ? 'รายการที่รอยืนยันควรใช้สถานะรอผู้ใช้งานยืนยัน เพื่อให้ผู้ใช้เข้าใจว่าต้องยืนยันผ่านอีเมล/เช็คอิน' : 'Bookings waiting for verification should display Wait for Verify so users know email/check-in verification is still required.'}</p>
               </div>
             </div>
           )}
