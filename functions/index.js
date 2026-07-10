@@ -2175,12 +2175,89 @@ async function runInternalBookingStatusTool(payload) {
   };
 }
 
+async function runInternalForceSendBookingEmailTool(payload) {
+  const bookingId = assertDocumentId(payload.bookingId, "bookingId");
+  const bookingRef = db.collection("bookings").doc(bookingId);
+  const bookingSnap = await bookingRef.get();
+  if (!bookingSnap.exists) {
+    throw new HttpsError("not-found", `Booking document not found: bookings/${bookingId}`);
+  }
+
+  const booking = bookingSnap.data() || {};
+  if (booking.status !== "CONFIRMED" || booking.actualStartTime) {
+    throw new HttpsError("failed-precondition", "Only confirmed bookings that have not started can be force-sent.");
+  }
+
+  const email = assertYageoEmail(booking.email);
+  const checkInWindow = getCheckInWindowState(booking);
+  if (checkInWindow.state === "invalid") {
+    throw new HttpsError("failed-precondition", "Booking start time is invalid.");
+  }
+
+  if (checkInWindow.state === "expired") {
+    await archiveMissedCheckInById(bookingId);
+    throw new HttpsError("deadline-exceeded", "The check-in window has expired and this booking has been released.");
+  }
+
+  try {
+    getPowerAutomateFlowUrl();
+  } catch (configError) {
+    await recordVerificationEmailSetupFailure(bookingRef, bookingId, booking, email, configError);
+    throw configError;
+  }
+
+  const token = createToken();
+  const tokenHash = hashToken(token);
+  const tokenExpiresAt = getTokenExpiresAt(booking);
+  const verifyUrl = buildVerifyUrl(getOriginFromCallable(), bookingId, token);
+  const windowStart = checkInWindow.window.opensAt;
+  const windowEnd = checkInWindow.window.closesAt;
+
+  await bookingRef.update({
+    email,
+    verificationTokenHash: tokenHash,
+    verificationTokenCreatedAt: FieldValue.serverTimestamp(),
+    verificationTokenExpiresAt: tokenExpiresAt,
+    verificationEmailStatus: "sending",
+    verificationEmailQueuedAt: FieldValue.serverTimestamp(),
+    verificationEmailScheduledAt: FieldValue.serverTimestamp(),
+    verificationWindowOpenedAt: windowStart,
+    verificationWindowClosedAt: windowEnd,
+    verificationEmailForceSentAt: FieldValue.serverTimestamp(),
+    verifyUrl,
+  });
+
+  const delivery = await dispatchVerificationEmailForBooking(bookingId, {
+    ...booking,
+    email,
+    verificationTokenHash: tokenHash,
+    verificationTokenExpiresAt: tokenExpiresAt,
+    verificationEmailStatus: "sending",
+    verificationEmailScheduledAt: new Date(),
+    verificationWindowOpenedAt: windowStart,
+    verificationWindowClosedAt: windowEnd,
+    verifyUrl,
+  });
+
+  return {
+    ...delivery,
+    forced: true,
+    scheduledAt: serializeDate(new Date()),
+    windowStart: serializeDate(windowStart),
+    windowEnd: serializeDate(windowEnd),
+    sentAt: serializeDate(new Date()),
+  };
+}
+
 async function runInternalAdminToolByName(tool, payload, data) {
   if (tool === "send_test_email") {
     return runInternalSendTestEmailTool(payload, data);
   }
   if (tool === "update_booking_verify_status") {
     return runInternalBookingStatusTool(payload);
+  }
+  if (tool === "force_send_booking_email") {
+    return runInternalForceSendBookingEmailTool(payload);
   }
   if (tool === "scan_booking_data_repair") {
     return scanBookingDataRepairIssues();
