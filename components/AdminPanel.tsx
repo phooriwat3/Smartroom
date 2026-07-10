@@ -160,7 +160,7 @@ type EmailHistoryVerificationStatus = 'pendingSend' | 'waitForVerify' | 'notVeri
 type AdminTab = 'bookings' | 'rooms' | 'users' | 'analytics' | 'emails' | 'tools';
 type InternalBookingTarget = 'single' | 'all';
 type InternalBookingStatus = BookingStatus.CONFIRMED | BookingStatus.VERIFIED | BookingStatus.NO_SHOW;
-type InternalAdminToolName = 'send_test_email' | 'update_booking_verify_status' | 'scan_booking_data_repair' | 'apply_booking_data_repair';
+type InternalAdminToolName = 'send_test_email' | 'update_booking_verify_status' | 'force_send_booking_email' | 'scan_booking_data_repair' | 'apply_booking_data_repair';
 type BookingRepairIssue = {
   bookingId: string;
   title: string;
@@ -315,8 +315,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [isSendingInternalTestEmail, setIsSendingInternalTestEmail] = useState(false);
   const [internalBookingTarget, setInternalBookingTarget] = useState<InternalBookingTarget>('single');
   const [internalBookingId, setInternalBookingId] = useState('');
+  const [forceEmailBookingId, setForceEmailBookingId] = useState('');
   const [internalBookingStatus, setInternalBookingStatus] = useState<InternalBookingStatus>(BookingStatus.VERIFIED);
   const [isUpdatingInternalBookings, setIsUpdatingInternalBookings] = useState(false);
+  const [isForceSendingBookingEmail, setIsForceSendingBookingEmail] = useState(false);
   const [bookingRepairResult, setBookingRepairResult] = useState<BookingRepairResult | null>(null);
   const [isScanningBookingRepair, setIsScanningBookingRepair] = useState(false);
   const [isRepairingBookingData, setIsRepairingBookingData] = useState(false);
@@ -1248,9 +1250,18 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [activeTab, currentUser?.id, currentUser?.username, language]);
 
+  const isYageoEmailAddress = (email: string) => /^[^\s@]+@yageo\.com$/i.test(email.trim());
+
   const sortedInternalBookingOptions = useMemo(() => (
     [...bookings].sort((a, b) => b.startTime.getTime() - a.startTime.getTime())
   ), [bookings]);
+  const forceEmailBookingOptions = useMemo(() => (
+    sortedInternalBookingOptions.filter(booking => (
+      booking.status === BookingStatus.CONFIRMED &&
+      !booking.actualStartTime &&
+      isYageoEmailAddress(booking.email || '')
+    ))
+  ), [sortedInternalBookingOptions]);
 
   useEffect(() => {
     if (sortedInternalBookingOptions.length === 0) {
@@ -1263,6 +1274,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [sortedInternalBookingOptions, internalBookingId]);
 
+  useEffect(() => {
+    if (forceEmailBookingOptions.length === 0) {
+      setForceEmailBookingId('');
+      return;
+    }
+
+    if (!forceEmailBookingId || !forceEmailBookingOptions.some(booking => booking.id === forceEmailBookingId)) {
+      setForceEmailBookingId(forceEmailBookingOptions[0].id);
+    }
+  }, [forceEmailBookingOptions, forceEmailBookingId]);
+
   const getCurrentAdminAuthPayload = () => {
     if (!currentUser) return null;
     return {
@@ -1273,8 +1295,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       role: currentUser.role,
     };
   };
-
-  const isYageoEmailAddress = (email: string) => /^[^\s@]+@yageo\.com$/i.test(email.trim());
 
   const runInternalAdminTool = async <T,>(tool: InternalAdminToolName, payload: Record<string, unknown> = {}) => {
     const adminPayload = getCurrentAdminAuthPayload();
@@ -1365,6 +1385,47 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
       confirmText: 'Apply',
       cancelText: 'Cancel',
       onConfirm: runInternalBookingStatusUpdate,
+    });
+  };
+
+  const runForceSendBookingEmail = async () => {
+    setIsForceSendingBookingEmail(true);
+    try {
+      await runInternalAdminTool('force_send_booking_email', {
+        bookingId: forceEmailBookingId,
+      });
+      showNotification('Booking verification email force sent successfully.', 'success');
+      void loadEmailHistory();
+    } catch (error) {
+      console.error('Force send booking email failed', error);
+      showNotification(`Force send failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsForceSendingBookingEmail(false);
+      setConfirmModal(prev => ({ ...prev, isOpen: false }));
+    }
+  };
+
+  const handleForceSendBookingEmail = (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!forceEmailBookingId) {
+      showNotification('Select a confirmed booking with a valid @yageo.com email first.', 'error');
+      return;
+    }
+
+    const booking = forceEmailBookingOptions.find(item => item.id === forceEmailBookingId);
+    const bookingLabel = booking
+      ? `${translateText(booking.title, language)} (${booking.email || '-'})`
+      : forceEmailBookingId;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Force Send Booking Email',
+      message: `Send verification email now for ${bookingLabel}? This bypasses the 15-minute pre-check-in schedule.`,
+      isDanger: false,
+      confirmText: 'Send Now',
+      cancelText: 'Cancel',
+      onConfirm: runForceSendBookingEmail,
     });
   };
 
@@ -2358,7 +2419,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
             <p className="text-xs text-slate-500 font-medium mt-1">Admin-only utilities for email delivery checks and booking verification status changes.</p>
           </div>
 
-          <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 p-5">
+          <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-4 gap-5 p-5">
             <form onSubmit={handleSendInternalTestEmail} className="border border-slate-200 rounded-xl p-5 space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center">
@@ -2390,6 +2451,48 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   <Send className="w-4 h-4 mr-2" />
                 )}
                 Send Test Mail
+              </button>
+            </form>
+
+            <form onSubmit={handleForceSendBookingEmail} className="border border-slate-200 rounded-xl p-5 space-y-4">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center">
+                  <Send className="w-4 h-4 mr-2 text-brand-500" />
+                  Force Booking Mail
+                </h3>
+                <p className="text-xs text-slate-500 font-medium mt-1">Send a booking verification email immediately without waiting for the 15-minute check-in window.</p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-600 mb-1">Booking</label>
+                <select
+                  value={forceEmailBookingId}
+                  onChange={(event) => setForceEmailBookingId(event.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 font-semibold bg-white"
+                >
+                  {forceEmailBookingOptions.length === 0 ? (
+                    <option value="">No confirmed email bookings available</option>
+                  ) : (
+                    forceEmailBookingOptions.map((booking) => (
+                      <option key={booking.id} value={booking.id}>
+                        {`${formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} | ${formatTimeRange(booking.startTime, booking.endTime)} | ${getRoomName(booking.roomId)} | ${booking.email || '-'} | ${translateText(booking.title, language)}`}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </div>
+
+              <button
+                type="submit"
+                disabled={isForceSendingBookingEmail || !forceEmailBookingId}
+                className="inline-flex items-center justify-center px-4 py-2 bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors font-bold disabled:opacity-60 disabled:cursor-wait"
+              >
+                {isForceSendingBookingEmail ? (
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Send className="w-4 h-4 mr-2" />
+                )}
+                Send Now
               </button>
             </form>
 

@@ -406,13 +406,34 @@ function getEmailFailureMessage(error) {
 
 async function sendPowerAutomateEmail(payload) {
   const flowUrl = getPowerAutomateFlowUrl();
+  const to = payload.to || payload.email || payload.recipientEmail || payload.recipient || "";
+  const subject = payload.subject || "";
+  const htmlBody = payload.message || payload.body || payload.html || "";
+  const requestPayload = {
+    ...payload,
+    to,
+    email: to,
+    recipient: to,
+    recipientEmail: to,
+    To: to,
+    Email: to,
+    RecipientEmail: to,
+    subject,
+    Subject: subject,
+    body: htmlBody,
+    html: htmlBody,
+    message: htmlBody,
+    Body: htmlBody,
+    Html: htmlBody,
+    Message: htmlBody,
+  };
 
   let response;
   try {
     response = await fetch(flowUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestPayload),
     });
   } catch (error) {
     console.error("Power Automate email flow request failed", {
@@ -434,13 +455,32 @@ async function sendPowerAutomateEmail(payload) {
     console.error("Power Automate email flow failed", {
       ...details,
       payload: {
-        to: payload.to,
-        subject: payload.subject,
-        senderName: payload.senderName,
+        to: requestPayload.to,
+        subject: requestPayload.subject,
+        senderName: requestPayload.senderName,
       },
     });
     throw new HttpsError("unavailable", "Power Automate email flow did not accept the request.", details);
   }
+
+  const responseBody = await response.text().catch(() => "");
+  console.log("Power Automate email flow accepted request", {
+    status: response.status,
+    statusText: response.statusText,
+    responseBody: responseBody.slice(0, 500),
+    payload: {
+      to: requestPayload.to,
+      subject: requestPayload.subject,
+      senderName: requestPayload.senderName,
+      bodyLength: htmlBody.length,
+    },
+  });
+
+  return {
+    status: response.status,
+    statusText: response.statusText,
+    responseBody: responseBody.slice(0, 1000),
+  };
 }
 
 function parseJsonText(value) {
@@ -2136,12 +2176,89 @@ async function runInternalBookingStatusTool(payload) {
   };
 }
 
+async function runInternalForceSendBookingEmailTool(payload) {
+  const bookingId = assertDocumentId(payload.bookingId, "bookingId");
+  const bookingRef = db.collection("bookings").doc(bookingId);
+  const bookingSnap = await bookingRef.get();
+  if (!bookingSnap.exists) {
+    throw new HttpsError("not-found", `Booking document not found: bookings/${bookingId}`);
+  }
+
+  const booking = bookingSnap.data() || {};
+  if (booking.status !== "CONFIRMED" || booking.actualStartTime) {
+    throw new HttpsError("failed-precondition", "Only confirmed bookings that have not started can be force-sent.");
+  }
+
+  const email = assertYageoEmail(booking.email);
+  const checkInWindow = getCheckInWindowState(booking);
+  if (checkInWindow.state === "invalid") {
+    throw new HttpsError("failed-precondition", "Booking start time is invalid.");
+  }
+
+  if (checkInWindow.state === "expired") {
+    await archiveMissedCheckInById(bookingId);
+    throw new HttpsError("deadline-exceeded", "The check-in window has expired and this booking has been released.");
+  }
+
+  try {
+    getPowerAutomateFlowUrl();
+  } catch (configError) {
+    await recordVerificationEmailSetupFailure(bookingRef, bookingId, booking, email, configError);
+    throw configError;
+  }
+
+  const token = createToken();
+  const tokenHash = hashToken(token);
+  const tokenExpiresAt = getTokenExpiresAt(booking);
+  const verifyUrl = buildVerifyUrl(getOriginFromCallable(), bookingId, token);
+  const windowStart = checkInWindow.window.opensAt;
+  const windowEnd = checkInWindow.window.closesAt;
+
+  await bookingRef.update({
+    email,
+    verificationTokenHash: tokenHash,
+    verificationTokenCreatedAt: FieldValue.serverTimestamp(),
+    verificationTokenExpiresAt: tokenExpiresAt,
+    verificationEmailStatus: "sending",
+    verificationEmailQueuedAt: FieldValue.serverTimestamp(),
+    verificationEmailScheduledAt: FieldValue.serverTimestamp(),
+    verificationWindowOpenedAt: windowStart,
+    verificationWindowClosedAt: windowEnd,
+    verificationEmailForceSentAt: FieldValue.serverTimestamp(),
+    verifyUrl,
+  });
+
+  const delivery = await dispatchVerificationEmailForBooking(bookingId, {
+    ...booking,
+    email,
+    verificationTokenHash: tokenHash,
+    verificationTokenExpiresAt: tokenExpiresAt,
+    verificationEmailStatus: "sending",
+    verificationEmailScheduledAt: new Date(),
+    verificationWindowOpenedAt: windowStart,
+    verificationWindowClosedAt: windowEnd,
+    verifyUrl,
+  });
+
+  return {
+    ...delivery,
+    forced: true,
+    scheduledAt: serializeDate(new Date()),
+    windowStart: serializeDate(windowStart),
+    windowEnd: serializeDate(windowEnd),
+    sentAt: serializeDate(new Date()),
+  };
+}
+
 async function runInternalAdminToolByName(tool, payload, data) {
   if (tool === "send_test_email") {
     return runInternalSendTestEmailTool(payload, data);
   }
   if (tool === "update_booking_verify_status") {
     return runInternalBookingStatusTool(payload);
+  }
+  if (tool === "force_send_booking_email") {
+    return runInternalForceSendBookingEmailTool(payload);
   }
   if (tool === "scan_booking_data_repair") {
     return scanBookingDataRepairIssues();
