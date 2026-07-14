@@ -72,7 +72,7 @@ const Dashboard: React.FC<DashboardProps> = ({
   const t = TRANSLATIONS[language];
   const checkInWindowTooltip = language === 'th'
     ? 'Check in ได้ภายใน 15 นาทีก่อนหรือหลังเวลาเริ่มจอง เช่น หากเริ่มเวลา 15:00 น. สามารถ Check in ได้ตั้งแต่ 14:45 น. ถึง 15:15 น.'
-    : 'Check in within 15 minutes before or after the booking start time. For example, if the booking starts at 3:00 PM, check-in is allowed from 2:45 PM to 3:15 PM.';
+    : 'Check in within 15 minutes before or after the booking start time. For example, if the booking starts at 15:00, check-in is allowed from 14:45 to 15:15.';
 
   // Live running clock state
   const [liveTime, setLiveTime] = useState<Date>(() => new Date());
@@ -323,9 +323,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       const h = hours.toString().padStart(2, '0');
       return `${h}:${minutes} น.`;
     } else {
-      const ampm = hours >= 12 ? 'PM' : 'AM';
-      const displayHour = hours % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
+      return `${hours.toString().padStart(2, '0')}:${minutes}`;
     }
   };
 
@@ -334,9 +332,7 @@ const Dashboard: React.FC<DashboardProps> = ({
       const h = hour.toString().padStart(2, '0');
       return `${h}:00 น.`;
     } else {
-      const ampm = hour >= 12 ? 'PM' : 'AM';
-      const displayHour = hour % 12 || 12;
-      return `${displayHour}:00 ${ampm}`;
+      return `${hour.toString().padStart(2, '0')}:00`;
     }
   };
 
@@ -360,7 +356,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     if (state === 'pending') return 'bg-orange-100 text-orange-800 border-orange-200';
 
     const departmentBadgeClass = (context === 'timeline' && department) ? getBookingDepartmentBadgeClass(department, { context }) : '';
-    if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900 border-sky-200'} animate-pulse`;
+    if (state === 'roomInUse') return 'bg-rose-500 text-white border-rose-300 ring-2 ring-rose-100 shadow-md animate-pulse';
     if (departmentBadgeClass) return departmentBadgeClass;
     if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-200';
     if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border-cyan-200';
@@ -1212,10 +1208,11 @@ const Dashboard: React.FC<DashboardProps> = ({
                                 }
                                 const b = item.data;
                                 const noCheckIn = isNoCheckIn(b);
+                                const displayState = getBookingDisplayState(b);
                                 return (
-                                  <div key={b.id} className={`p-2 rounded-lg border text-[11px] transition-colors ${getBookingDepartmentClassForState(getBookingDisplayState(b), b.department)} ${noCheckIn ? 'bg-rose-50 border-rose-200' : b.id === roomStats.currentBooking?.id
-                                    ? 'bg-orange-50 border-orange-300'
-                                    : 'bg-orange-50 border-orange-200 hover:border-orange-300'
+                                  <div key={b.id} className={`p-2 rounded-lg border text-[11px] transition-colors ${getBookingDepartmentClass(b.department, { context: 'timeline' })} ${noCheckIn ? 'border-rose-400 opacity-90' : b.id === roomStats.currentBooking?.id
+                                    ? 'border-slate-300/50 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.35)]'
+                                    : 'border-slate-300/40 hover:border-slate-400/60'
                                     }`}>
                                     <div className="flex justify-between items-start mb-0.5">
                                       <span className="font-bold text-slate-800 truncate max-w-[130px]">
@@ -1231,11 +1228,10 @@ const Dashboard: React.FC<DashboardProps> = ({
                                         <span>{b.organizer}</span>
                                       </div>
                                       {(() => {
-                                        const displayState = getBookingDisplayState(b);
                                         return (
                                           <span
                                             title={displayState === 'waitForVerify' || displayState === 'roomInUse' || displayState === 'noCheckIn' ? checkInWindowTooltip : undefined}
-                                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${getBookingStatusBadgeClass(displayState, b.department)}`}
+                                            className={`text-[9px] px-1.5 py-0.5 rounded font-bold border ${getBookingStatusBadgeClass(displayState, b.department, 'timeline')}`}
                                           >
                                             {getBookingDisplayLabel(b)}
                                           </span>

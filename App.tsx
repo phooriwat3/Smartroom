@@ -12,7 +12,7 @@ import { TRANSLATIONS, getEffectiveRoomStatus, isRoomClosureExpired, isRoomClose
 import { LayoutGrid, Calendar, BarChart3, Settings, Check, XCircle, AlertCircle, BookOpen, Menu, X } from 'lucide-react';
 import { TermsModal, AccessDeniedOverlay } from './components/TermsModal';
 import { UserGuideModal } from './components/UserGuideModal';
-import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, query, where } from 'firebase/firestore';
+import { collection, onSnapshot, setDoc, doc, deleteDoc, updateDoc, serverTimestamp, query, where, deleteField } from 'firebase/firestore';
 import { signInAnonymously, onAuthStateChanged } from 'firebase/auth';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions, handleFirestoreError, OperationType, testFirestoreConnection } from './firebase';
@@ -851,6 +851,7 @@ const SmartRoomApplication: React.FC = () => {
         status: BookingStatus.VERIFIED,
         verifiedAt: serverTimestamp(),
         actualStartTime: serverTimestamp(),
+        actualEndTime: deleteField(),
         verificationMethod: 'admin'
       });
       showNotification(language === 'th' ? 'ยืนยันการใช้งานห้องเรียบร้อยแล้ว' : 'Booking verified successfully', 'success');

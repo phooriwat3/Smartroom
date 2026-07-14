@@ -1199,6 +1199,7 @@ function buildInternalVerificationStatusUpdate(targetStatus) {
       ...update,
       verifiedAt: FieldValue.serverTimestamp(),
       actualStartTime: FieldValue.serverTimestamp(),
+      actualEndTime: FieldValue.delete(),
       noShowMarkedAt: FieldValue.delete(),
       verificationMethod: "admin-internal-tool",
       verificationTokenHash: FieldValue.delete(),

@@ -20,7 +20,7 @@ const copy = {
     overviewBody: 'Use the system to check room availability, select a date in MM/DD/YYYY format, book available time slots, and verify your booking by email/check-in during the allowed window.',
     timelineTitle: 'Timeline grid',
     timelineItems: [
-      'The grid shows each room by capacity and the hourly schedule from 7:00 AM to 7:00 PM.',
+      'The grid shows each room by capacity and the hourly schedule from 07:00 to 19:00.',
       'A continuous booking appears as one block across its full time range.',
       'Disabled or maintenance periods cannot be selected for new bookings.',
       'Status colors and badges show whether a booking is waiting for verification, verified, cancelled, rejected, or unavailable.',
@@ -29,7 +29,7 @@ const copy = {
     bookingTitle: 'Booking workflow',
     steps: [
       ['Choose date and room', 'Select the booking date. Calendar and date picker displays use MM/DD/YYYY. Pick a room that fits the number of people.'],
-      ['Select time', 'Choose only available time slots. Bookings must stay within 7:00 AM to 7:00 PM and cannot overlap another booking or a maintenance period.'],
+      ['Select time', 'Choose only available time slots. Bookings must stay within 07:00 to 19:00 and cannot overlap another booking or a maintenance period.'],
       ['Enter booking details', 'Provide the booker name, employee ID, department, desk phone/desk number, YAGEO email, and purpose so Admin and users can identify the booking.'],
       ['Submit booking', 'The system saves the request and shows it in the room schedule, booking history, and Admin views according to its status.'],
       ['Verify by email/check-in', 'A verification email is sent immediately when the check-in window is open, or scheduled for 15 minutes before the start time. The link is valid from 15 minutes before to 15 minutes after the booking starts.'],
@@ -43,7 +43,7 @@ const copy = {
       ['User responsibility', 'Users must keep the room clean, respect capacity limits, leave on time, turn off equipment/lights/AC when appropriate, and report room issues.'],
       ['Admin responsibility', 'Admins manage room availability, booking records, status updates, booking history, email history, analytics, and maintenance periods.'],
     ],
-    formatNote: 'Date format used across the app: MM/DD/YYYY. Time format uses AM/PM labels where shown.',
+    formatNote: 'Date format used across the app: MM/DD/YYYY. Time format uses a 24-hour clock.',
   },
   th: {
     tabs: {

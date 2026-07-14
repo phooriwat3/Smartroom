@@ -1103,8 +1103,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const getAdminBookingDisplayState = (booking: Booking): AdminBookingDisplayState => {
     if (booking.status === BookingStatus.PENDING) return 'pending';
     if (booking.status === BookingStatus.REJECTED || !booking.status) return 'rejected';
-    if (booking.actualEndTime) return 'used';
-
     const now = liveTime.getTime();
     const startTime = booking.startTime.getTime();
     const endTime = booking.endTime.getTime();
@@ -1113,6 +1111,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     if (hasVerifiedOrStarted) {
       if (now > endTime) return 'used';
       if (now >= startTime && now <= endTime) return 'roomInUse';
+      if (booking.actualEndTime) return 'used';
       return 'verified';
     }
 

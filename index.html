@@ -7,7 +7,6 @@
     <link rel="icon" type="image/png" href="/favicon.png" />
     <meta name="theme-color" content="#e5673e" />
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script>
       tailwind.config = {
         theme: {
@@ -27,15 +26,22 @@
               }
             },
             fontFamily: {
-              sans: ['Poppins', 'sans-serif'],
+              sans: ['FC Pride', 'Arial', 'sans-serif'],
             }
           }
         }
       }
     </script>
     <style>
+      @font-face {
+        font-family: 'FC Pride';
+        src: url('/fonts/fc-pride-non-commercial.otf') format('opentype');
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: swap;
+      }
       body {
-        font-family: 'Poppins', sans-serif;
+        font-family: 'FC Pride', Arial, sans-serif;
       }
       /* Custom scrollbar for cleaner UI */
       ::-webkit-scrollbar {

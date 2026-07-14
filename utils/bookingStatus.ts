@@ -13,11 +13,12 @@ export const getBookingDisplayState = (booking: Booking, now: Date = new Date())
   const startTime = booking.startTime.getTime();
   const endTime = booking.endTime.getTime();
 
-  if (booking.actualEndTime || nowTime > endTime) return 'used';
+  if (nowTime > endTime) return 'used';
 
   const hasVerifiedOrStarted = booking.status === BookingStatus.VERIFIED || !!booking.actualStartTime;
   if (hasVerifiedOrStarted) {
     if (nowTime >= startTime && nowTime <= endTime) return 'roomInUse';
+    if (booking.actualEndTime) return 'used';
     return 'verified';
   }
 

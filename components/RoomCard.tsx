@@ -19,7 +19,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
   const temporarilyDisabledLabel = language === 'th' ? 'ปิดใช้งานชั่วคราว' : 'Temporarily Disabled';
   const checkInWindowTooltip = language === 'th'
     ? 'Check in ได้ภายใน 15 นาทีก่อนหรือหลังเวลาเริ่มจอง เช่น หากเริ่มเวลา 15:00 น. สามารถ Check in ได้ตั้งแต่ 14:45 น. ถึง 15:15 น.'
-    : 'Check in within 15 minutes before or after the booking start time. For example, if the booking starts at 3:00 PM, check-in is allowed from 2:45 PM to 3:15 PM.';
+    : 'Check in within 15 minutes before or after the booking start time. For example, if the booking starts at 15:00, check-in is allowed from 14:45 to 15:15.';
   const getBookingDisplayState = (booking: Booking): BookingDisplayState => getSharedBookingDisplayState(booking, now);
 
   const getBookingDisplayLabel = (booking: Booking) => {
@@ -38,7 +38,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
     if (state === 'pending') return 'bg-orange-100 text-orange-800';
 
     const departmentBadgeClass = department ? getBookingDepartmentBadgeClass(department) : '';
-    if (state === 'roomInUse') return `${departmentBadgeClass || 'bg-sky-100 text-sky-900'} animate-pulse`;
+    if (state === 'roomInUse') return 'bg-rose-500 text-white border border-rose-300 ring-2 ring-rose-100 shadow-md animate-pulse';
     if (departmentBadgeClass) return departmentBadgeClass;
     if (state === 'waitForVerify' || state === 'confirmed') return 'bg-amber-100 text-amber-900 border border-amber-250';
     if (state === 'verified') return 'bg-cyan-100 text-cyan-800 border border-cyan-200';
@@ -68,9 +68,7 @@ const RoomCard: React.FC<RoomCardProps> = ({ room, currentBookings, onBook, lang
   const formatHour = (hour?: number) => {
     const h = hour !== undefined ? hour : BOOKING_START_HOUR;
     if (language === 'en') {
-      const ampm = h >= 12 ? 'PM' : 'AM';
-      const displayHour = h % 12 || 12;
-      return `${displayHour}:00 ${ampm}`;
+      return `${String(h).padStart(2, '0')}:00`;
     }
     return `${String(h).padStart(2, '0')}:00 น.`;
   };

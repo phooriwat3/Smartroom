@@ -10,9 +10,7 @@ export const TRANSLATIONS = {
 
 export const formatTimeValue = (hour: number, language: "th" | "en"): string => {
   if (language === "en") {
-    const ampm = hour >= 12 ? "PM" : "AM";
-    const displayHour = hour % 12 || 12;
-    return `${displayHour}:00 ${ampm}`;
+    return `${hour.toString().padStart(2, "0")}:00`;
   } else {
     return `${hour.toString().padStart(2, "0")}:00 น.`;
   }
@@ -24,9 +22,7 @@ export const formatTimeString = (timeStr: string, language: "th" | "en"): string
   const hours = parseInt(parts[0], 10);
   const minutes = parts[1] || "00";
   if (language === "en") {
-    const ampm = hours >= 12 ? "PM" : "AM";
-    const displayHour = hours % 12 || 12;
-    return `${displayHour}:${minutes} ${ampm}`;
+    return `${hours.toString().padStart(2, "0")}:${minutes}`;
   } else {
     return `${hours.toString().padStart(2, "0")}:${minutes} น.`;
   }
@@ -54,9 +50,7 @@ export const formatTimeRange = (
       const parts = hhmmStr.split(":");
       const hours = parseInt(parts[0], 10);
       const minutes = parts[1] || "00";
-      const ampm = hours >= 12 ? "PM" : "AM";
-      const displayHour = hours % 12 || 12;
-      return `${displayHour}:${minutes} ${ampm}`;
+      return `${hours.toString().padStart(2, "0")}:${minutes}`;
     };
     return `${formatSingle(startStr)} - ${formatSingle(endStr)}`;
   } else {
