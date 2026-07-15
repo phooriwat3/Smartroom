@@ -176,5 +176,11 @@ service cloud.firestore {
       allow get, list: if isAdmin();
       allow create, update, delete: if false;
     }
+
+    // Announcements are managed through Cloud Functions so all writes receive
+    // server-side validation, content sanitization, and admin authorization.
+    match /announcements/{announcementId} {
+      allow get, list, create, update, delete: if false;
+    }
   }
 }

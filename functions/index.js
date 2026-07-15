@@ -24,6 +24,9 @@ const TOKEN_TTL_AFTER_END_MS = 24 * 60 * 60 * 1000;
 const EMAIL_RESEND_COOLDOWN_MS = 2 * 60 * 1000;
 const EMAIL_HISTORY_RETENTION_DAYS = 7;
 const EMAIL_HISTORY_CLEANUP_BATCH_SIZE = 500;
+const ANNOUNCEMENT_TARGET_PAGES = new Set(["all", "dashboard", "status", "timeline", "grid"]);
+const ANNOUNCEMENT_AUDIENCES = new Set(["all", "guests", "logged_in"]);
+const ANNOUNCEMENT_CATEGORIES = new Set(["info", "alert", "warning", "success", "maintenance", "event"]);
 
 const CHECK_IN_WINDOW_BEFORE_MS = 15 * 60 * 1000;
 const CHECK_IN_WINDOW_AFTER_MS = 15 * 60 * 1000;
@@ -1180,6 +1183,166 @@ function assertRoomImageUrl(value) {
   return imageUrl;
 }
 
+function sanitizePlainText(value, name, maxLength, required = false) {
+  const text = assertOptionalString(value, name, maxLength)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "")
+    .replace(/[<>]/g, "")
+    .trim();
+
+  if (required && !text) {
+    throw new HttpsError("invalid-argument", `${name} is required.`);
+  }
+
+  return text;
+}
+
+function assertAnnouncementUrl(value, name, maxLength, allowRelative = false) {
+  const rawUrl = assertOptionalString(value, name, maxLength);
+  if (!rawUrl) return "";
+
+  if (allowRelative && /^\/[A-Za-z0-9._~:/?#[\]@!$&'()*+,;=%-]*$/.test(rawUrl) && !rawUrl.startsWith("//")) {
+    return rawUrl;
+  }
+
+  let url;
+  try {
+    url = new URL(rawUrl);
+  } catch (error) {
+    throw new HttpsError("invalid-argument", `${name} must be a valid HTTPS URL.`);
+  }
+
+  if (url.protocol !== "https:") {
+    throw new HttpsError("invalid-argument", `${name} must use HTTPS.`);
+  }
+
+  return url.toString();
+}
+
+function assertAnnouncementDate(value, name) {
+  const date = toDate(value);
+  if (!date) {
+    throw new HttpsError("invalid-argument", `${name} must be a valid date.`);
+  }
+  return date;
+}
+
+function sanitizeAnnouncementCategory(value) {
+  const category = String(value || "info").trim().toLowerCase();
+  if (!ANNOUNCEMENT_CATEGORIES.has(category)) {
+    throw new HttpsError("invalid-argument", "announcement.category must be info, alert, warning, success, maintenance, or event.");
+  }
+  return category;
+}
+
+function stripUndefinedValues(value) {
+  return Object.fromEntries(
+    Object.entries(value).filter(([, entryValue]) => entryValue !== undefined)
+  );
+}
+
+function sanitizeAnnouncement(rawAnnouncement, existing = {}) {
+  const raw = rawAnnouncement || {};
+  const id = raw.id
+    ? assertSafeDocumentId(raw.id, "announcement.id")
+    : normalizeId(existing.id) || crypto.randomUUID();
+
+  const targetPages = Array.isArray(raw.targetPages)
+    ? [...new Set(raw.targetPages.map((page) => String(page || "").trim().toLowerCase()).filter(Boolean))]
+    : ["all"];
+  const validTargetPages = targetPages.filter((page) => ANNOUNCEMENT_TARGET_PAGES.has(page));
+
+  if (validTargetPages.length === 0) {
+    throw new HttpsError("invalid-argument", "announcement.targetPages must include at least one valid page.");
+  }
+
+  const audience = String(raw.audience || "all").trim().toLowerCase();
+  if (!ANNOUNCEMENT_AUDIENCES.has(audience)) {
+    throw new HttpsError("invalid-argument", "announcement.audience must be all, guests, or logged_in.");
+  }
+
+  const startAt = assertAnnouncementDate(raw.startAt, "announcement.startAt");
+  const endAt = assertAnnouncementDate(raw.endAt, "announcement.endAt");
+  if (endAt <= startAt) {
+    throw new HttpsError("invalid-argument", "announcement.endAt must be after startAt.");
+  }
+
+  const buttonText = sanitizePlainText(raw.buttonText, "announcement.buttonText", 80, false);
+  const buttonUrl = assertAnnouncementUrl(raw.buttonUrl, "announcement.buttonUrl", 2048, true);
+  if (buttonText && !buttonUrl) {
+    throw new HttpsError("invalid-argument", "announcement.buttonUrl is required when buttonText is set.");
+  }
+  if (buttonUrl && !buttonText) {
+    throw new HttpsError("invalid-argument", "announcement.buttonText is required when buttonUrl is set.");
+  }
+
+  const priority = Number(raw.priority ?? 0);
+  if (!Number.isInteger(priority) || priority < 0 || priority > 9999) {
+    throw new HttpsError("invalid-argument", "announcement.priority must be an integer between 0 and 9999.");
+  }
+
+  const now = FieldValue.serverTimestamp();
+  return {
+    id,
+    title: sanitizePlainText(raw.title, "announcement.title", 160, true),
+    message: sanitizePlainText(raw.message, "announcement.message", 2000, true),
+    category: sanitizeAnnouncementCategory(raw.category),
+    imageUrl: assertAnnouncementUrl(raw.imageUrl, "announcement.imageUrl", 2048, true),
+    buttonText,
+    buttonUrl,
+    startAt,
+    endAt,
+    isActive: raw.isActive === true,
+    showOnce: raw.showOnce === true,
+    targetPages: validTargetPages,
+    audience,
+    priority,
+    createdAt: existing.createdAt || now,
+    updatedAt: now,
+    publishedAt: raw.isActive === true && existing.isActive !== true ? now : existing.publishedAt || null,
+    disabledAt: raw.isActive === false && existing.isActive === true ? now : existing.disabledAt || null,
+  };
+}
+
+function serializeAnnouncement(id, data) {
+  return {
+    id: data.id || id,
+    title: data.title || "",
+    message: data.message || "",
+    category: ANNOUNCEMENT_CATEGORIES.has(data.category) ? data.category : "info",
+    imageUrl: data.imageUrl || "",
+    buttonText: data.buttonText || "",
+    buttonUrl: data.buttonUrl || "",
+    startAt: serializeDate(data.startAt),
+    endAt: serializeDate(data.endAt),
+    isActive: data.isActive === true,
+    showOnce: data.showOnce === true,
+    targetPages: Array.isArray(data.targetPages) ? data.targetPages : ["all"],
+    audience: ANNOUNCEMENT_AUDIENCES.has(data.audience) ? data.audience : "all",
+    priority: Number.isInteger(data.priority) ? data.priority : 0,
+    createdAt: serializeDate(data.createdAt),
+    updatedAt: serializeDate(data.updatedAt),
+    publishedAt: serializeDate(data.publishedAt),
+    disabledAt: serializeDate(data.disabledAt),
+  };
+}
+
+function announcementMatchesRequest(announcement, page, audience, nowMs) {
+  if (announcement.isActive !== true) return false;
+
+  const startAt = toDate(announcement.startAt);
+  const endAt = toDate(announcement.endAt);
+  if (!startAt || !endAt || nowMs < startAt.getTime() || nowMs > endAt.getTime()) {
+    return false;
+  }
+
+  const targetPages = Array.isArray(announcement.targetPages) ? announcement.targetPages : ["all"];
+  if (!targetPages.includes("all") && !targetPages.includes(page)) return false;
+
+  if (announcement.audience !== "all" && announcement.audience !== audience) return false;
+
+  return true;
+}
+
 function assertInternalVerificationStatus(value) {
   const status = assertString(value, "targetStatus").toUpperCase();
   if (!["CONFIRMED", "VERIFIED", "NO_SHOW"].includes(status)) {
@@ -2077,6 +2240,117 @@ exports.listEmailSentHistory = onCall(APP_HTTPS_OPTIONS, async (request) => {
       "internal",
       `Email history load failed: ${error && error.message ? error.message : String(error)}`
     );
+  }
+});
+
+exports.listAnnouncements = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+
+    const snapshot = await db
+      .collection("announcements")
+      .orderBy("updatedAt", "desc")
+      .limit(200)
+      .get();
+
+    return {
+      announcements: snapshot.docs.map((docSnap) => serializeAnnouncement(docSnap.id, docSnap.data() || {})),
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    console.error("listAnnouncements failed", { message: error && error.message, stack: error && error.stack });
+    throw new HttpsError("internal", "Announcement list failed.");
+  }
+});
+
+exports.saveAnnouncement = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+
+    const rawAnnouncement = data.announcement || {};
+    const existingId = normalizeId(rawAnnouncement.id);
+    const docRef = existingId
+      ? db.collection("announcements").doc(assertSafeDocumentId(existingId, "announcement.id"))
+      : db.collection("announcements").doc();
+    const existingSnap = await docRef.get();
+    const existingData = existingSnap.exists ? existingSnap.data() || {} : {};
+    const announcement = sanitizeAnnouncement({ ...rawAnnouncement, id: docRef.id }, existingData);
+
+    await docRef.set(stripUndefinedValues(announcement), { merge: false });
+    const savedSnap = await docRef.get();
+    const savedAnnouncement = savedSnap.exists ? savedSnap.data() || announcement : announcement;
+
+    return {
+      announcement: serializeAnnouncement(docRef.id, savedAnnouncement),
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    console.error("saveAnnouncement failed", { message: error && error.message, stack: error && error.stack });
+    throw new HttpsError("internal", "Announcement save failed.");
+  }
+});
+
+exports.deleteAnnouncement = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    await assertAdminAccess(request, data);
+
+    const announcementId = assertSafeDocumentId(data.id || data.announcementId, "announcement.id");
+    await db.collection("announcements").doc(announcementId).delete();
+
+    return { success: true, id: announcementId };
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    console.error("deleteAnnouncement failed", { message: error && error.message, stack: error && error.stack });
+    throw new HttpsError("internal", "Announcement delete failed.");
+  }
+});
+
+exports.getActiveAnnouncement = onCall(INTERNAL_TOOL_HTTPS_OPTIONS, async (request) => {
+  try {
+    const data = request.data || {};
+    const page = String(data.page || "dashboard").trim().toLowerCase();
+    const audience = String(data.audience || "guests").trim().toLowerCase();
+
+    if (!ANNOUNCEMENT_TARGET_PAGES.has(page)) {
+      throw new HttpsError("invalid-argument", "page is not a supported announcement target.");
+    }
+    if (!ANNOUNCEMENT_AUDIENCES.has(audience) || audience === "all") {
+      throw new HttpsError("invalid-argument", "audience must be guests or logged_in.");
+    }
+
+    const nowMs = Date.now();
+    const snapshot = await db
+      .collection("announcements")
+      .where("isActive", "==", true)
+      .limit(100)
+      .get();
+
+    const matches = snapshot.docs
+      .map((docSnap) => serializeAnnouncement(docSnap.id, docSnap.data() || {}))
+      .filter((announcement) => announcementMatchesRequest(announcement, page, audience, nowMs))
+      .sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        return new Date(b.updatedAt || b.startAt).getTime() - new Date(a.updatedAt || a.startAt).getTime();
+      });
+
+    return {
+      announcement: matches[0] || null,
+    };
+  } catch (error) {
+    if (error instanceof HttpsError) {
+      throw error;
+    }
+    console.error("getActiveAnnouncement failed", { message: error && error.message, stack: error && error.stack });
+    throw new HttpsError("internal", "Active announcement lookup failed.");
   }
 });
 

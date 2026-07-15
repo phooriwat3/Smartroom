@@ -4,6 +4,7 @@ import { Room, Booking, RoomType, BookingStatus, AdminUser, AdminRole, RoomMaint
 import RoomCard from './components/RoomCard';
 import BookingModal from './components/BookingModal';
 import Dashboard from './components/Dashboard';
+import AnnouncementModal from './components/AnnouncementModal';
 import { DashboardSkeleton } from './components/SkeletonLoader';
 const AdminPanel = React.lazy(() => import('./components/AdminPanel'));
 import ConfirmationModal from './components/ConfirmationModal';
@@ -1466,8 +1467,21 @@ const SmartRoomApplication: React.FC = () => {
     );
   }
 
+  const announcementPage = currentView === 'grid'
+    ? 'grid'
+    : dashboardActiveView === 'timeline'
+      ? 'timeline'
+      : 'status';
+  const announcementAudience = adminUser ? 'logged_in' : 'guests';
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
+      <AnnouncementModal
+        page={announcementPage}
+        audience={announcementAudience}
+        language={language}
+      />
+
       <button
         type="button"
         onClick={() => setIsMobileDrawerOpen(true)}

@@ -88,6 +88,31 @@ export interface Booking {
 
 export type EmailSentStatus = 'successful' | 'failed' | 'queued';
 
+export type AnnouncementAudience = 'all' | 'guests' | 'logged_in';
+export type AnnouncementCategory = 'info' | 'alert' | 'warning' | 'success' | 'maintenance' | 'event';
+
+export interface Announcement {
+  id: string;
+  title: string;
+  message: string;
+  category: AnnouncementCategory;
+  imageUrl?: string;
+  buttonText?: string;
+  buttonUrl?: string;
+  startAt: Date;
+  endAt: Date;
+  isActive: boolean;
+  showOnce: boolean;
+  targetPages: string[];
+  audience: AnnouncementAudience;
+  priority: number;
+  createdAt?: any;
+  updatedAt?: any;
+  publishedAt?: any;
+  disabledAt?: any;
+  deletedAt?: any;
+}
+
 export interface EmailSentHistoryRecord {
   id: string;
   recipientEmail: string;

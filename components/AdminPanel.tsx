@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord, EmailSentStatus } from '../types';
+import { Announcement, AnnouncementAudience, AnnouncementCategory, Booking, Room, RoomType, BookingStatus, AdminUser, AdminRole, EmailSentHistoryRecord, EmailSentStatus } from '../types';
 import { INITIAL_ADMIN_USERS, DEPARTMENTS, BOOKING_START_HOUR, BOOKING_END_HOUR } from '../constants';
-import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen, Wrench, Send } from 'lucide-react';
+import { Lock, Trash2, Search, Calendar, User, Clock, LayoutGrid, Edit, Plus, X, Save, Building2, IdCard, Check, XCircle, Shield, ShieldCheck, UserCog, LogIn, Upload, FileText, Flame, Sparkles, TrendingUp, Users, AlertCircle, BarChart2, Mail, RefreshCw, Download, BookOpen, Wrench, Send, Megaphone, Eye, Info, AlertTriangle, CheckCircle2, Bell } from 'lucide-react';
 import { TRANSLATIONS, formatDate, formatTimeRange, translateText, translateAmenities, formatTimeValue, isRoomCurrentlyClosed, formatDepartment, getDepartmentSelectOptions } from '../translations';
 import ConfirmationModal from './ConfirmationModal';
 import { collection, onSnapshot, setDoc, doc } from 'firebase/firestore';
@@ -157,10 +157,27 @@ interface AdminPanelProps {
 
 type AdminBookingDisplayState = 'pending' | 'waitForVerify' | 'verified' | 'roomInUse' | 'used' | 'confirmed' | 'rejected' | 'noCheckIn';
 type EmailHistoryVerificationStatus = 'pendingSend' | 'waitForVerify' | 'notVerified' | 'verified' | 'na';
-type AdminTab = 'bookings' | 'rooms' | 'users' | 'analytics' | 'emails' | 'tools';
+type AdminTab = 'bookings' | 'rooms' | 'users' | 'analytics' | 'emails' | 'tools' | 'announcements';
 type InternalBookingTarget = 'single' | 'all';
 type InternalBookingStatus = BookingStatus.CONFIRMED | BookingStatus.VERIFIED | BookingStatus.NO_SHOW;
 type InternalAdminToolName = 'send_test_email' | 'update_booking_verify_status' | 'force_send_booking_email' | 'scan_booking_data_repair' | 'apply_booking_data_repair';
+type AnnouncementFormState = {
+  id: string;
+  title: string;
+  message: string;
+  category: AnnouncementCategory;
+  imageUrl: string;
+  buttonText: string;
+  buttonUrl: string;
+  startAt: string;
+  endAt: string;
+  isActive: boolean;
+  showOnce: boolean;
+  targetPages: string[];
+  audience: AnnouncementAudience;
+  priority: string;
+};
+type AnnouncementFormErrors = Partial<Record<keyof AnnouncementFormState, string>>;
 type BookingRepairIssue = {
   bookingId: string;
   title: string;
@@ -178,6 +195,113 @@ type BookingRepairResult = {
   summary?: Record<string, number>;
   scan?: BookingRepairResult;
 };
+
+const ANNOUNCEMENT_TARGET_OPTIONS = [
+  { value: 'all', label: 'All pages' },
+  { value: 'dashboard', label: 'Dashboard' },
+  { value: 'status', label: 'Status cards' },
+  { value: 'timeline', label: 'Timeline grid' },
+  { value: 'grid', label: 'Room grid' },
+];
+
+const ANNOUNCEMENT_AUDIENCE_OPTIONS: Array<{ value: AnnouncementAudience; label: string }> = [
+  { value: 'all', label: 'All users' },
+  { value: 'guests', label: 'Guests' },
+  { value: 'logged_in', label: 'Logged-in users' },
+];
+
+const ANNOUNCEMENT_CATEGORY_OPTIONS: Array<{
+  value: AnnouncementCategory;
+  label: string;
+  helper: string;
+  Icon: React.ComponentType<{ className?: string }>;
+  badgeClass: string;
+  iconClass: string;
+  ctaClass: string;
+}> = [
+  { value: 'info', label: 'Info', helper: 'General update', Icon: Info, badgeClass: 'bg-sky-50 text-sky-700 border-sky-200', iconClass: 'bg-sky-500 text-white', ctaClass: 'bg-sky-600' },
+  { value: 'alert', label: 'Alert', helper: 'Important notice', Icon: AlertCircle, badgeClass: 'bg-rose-50 text-rose-700 border-rose-200', iconClass: 'bg-rose-500 text-white', ctaClass: 'bg-rose-600' },
+  { value: 'warning', label: 'Warning', helper: 'Requires attention', Icon: AlertTriangle, badgeClass: 'bg-amber-50 text-amber-800 border-amber-200', iconClass: 'bg-amber-500 text-white', ctaClass: 'bg-amber-500' },
+  { value: 'success', label: 'Success', helper: 'Good news', Icon: CheckCircle2, badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200', iconClass: 'bg-emerald-500 text-white', ctaClass: 'bg-emerald-600' },
+  { value: 'maintenance', label: 'Maintenance', helper: 'Service work', Icon: Wrench, badgeClass: 'bg-violet-50 text-violet-700 border-violet-200', iconClass: 'bg-violet-500 text-white', ctaClass: 'bg-violet-600' },
+  { value: 'event', label: 'Event', helper: 'Activity or campaign', Icon: Bell, badgeClass: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200', iconClass: 'bg-fuchsia-500 text-white', ctaClass: 'bg-fuchsia-600' },
+];
+
+const getAnnouncementCategoryMeta = (category?: AnnouncementCategory) => (
+  ANNOUNCEMENT_CATEGORY_OPTIONS.find(option => option.value === category) || ANNOUNCEMENT_CATEGORY_OPTIONS[0]
+);
+
+const createDefaultAnnouncementForm = (): AnnouncementFormState => {
+  const startAt = new Date();
+  startAt.setMinutes(startAt.getMinutes() - startAt.getTimezoneOffset());
+  startAt.setSeconds(0, 0);
+  const endAt = new Date(startAt);
+  endAt.setDate(endAt.getDate() + 7);
+
+  return {
+    id: '',
+    title: '',
+    message: '',
+    category: 'info',
+    imageUrl: '',
+    buttonText: '',
+    buttonUrl: '',
+    startAt: startAt.toISOString().slice(0, 16),
+    endAt: endAt.toISOString().slice(0, 16),
+    isActive: false,
+    showOnce: true,
+    targetPages: ['all'],
+    audience: 'all',
+    priority: '0',
+  };
+};
+
+const toDateTimeInputValue = (value?: Date | string | null) => {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const localDate = new Date(date);
+  localDate.setMinutes(localDate.getMinutes() - localDate.getTimezoneOffset());
+  return localDate.toISOString().slice(0, 16);
+};
+
+const normalizeAnnouncementRecord = (raw: any): Announcement => ({
+  id: String(raw?.id || ''),
+  title: String(raw?.title || ''),
+  message: String(raw?.message || ''),
+  category: ANNOUNCEMENT_CATEGORY_OPTIONS.some(option => option.value === raw?.category) ? raw.category : 'info',
+  imageUrl: String(raw?.imageUrl || ''),
+  buttonText: String(raw?.buttonText || ''),
+  buttonUrl: String(raw?.buttonUrl || ''),
+  startAt: raw?.startAt ? new Date(raw.startAt) : new Date(),
+  endAt: raw?.endAt ? new Date(raw.endAt) : new Date(),
+  isActive: raw?.isActive === true,
+  showOnce: raw?.showOnce !== false,
+  targetPages: Array.isArray(raw?.targetPages) ? raw.targetPages.map(String) : ['all'],
+  audience: raw?.audience === 'guests' || raw?.audience === 'logged_in' ? raw.audience : 'all',
+  priority: Number.isInteger(raw?.priority) ? raw.priority : Number(raw?.priority || 0),
+  createdAt: raw?.createdAt,
+  updatedAt: raw?.updatedAt,
+  publishedAt: raw?.publishedAt,
+  disabledAt: raw?.disabledAt,
+});
+
+const announcementToForm = (announcement: Announcement): AnnouncementFormState => ({
+  id: announcement.id,
+  title: announcement.title,
+  message: announcement.message,
+  category: announcement.category || 'info',
+  imageUrl: announcement.imageUrl || '',
+  buttonText: announcement.buttonText || '',
+  buttonUrl: announcement.buttonUrl || '',
+  startAt: toDateTimeInputValue(announcement.startAt),
+  endAt: toDateTimeInputValue(announcement.endAt),
+  isActive: announcement.isActive,
+  showOnce: announcement.showOnce,
+  targetPages: announcement.targetPages.length > 0 ? announcement.targetPages : ['all'],
+  audience: announcement.audience,
+  priority: String(announcement.priority || 0),
+});
 
 const STATUS_LABEL_FALLBACKS = {
   en: {
@@ -265,6 +389,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
   const [emailHistory, setEmailHistory] = useState<EmailSentHistoryRecord[]>([]);
   const [isEmailHistoryLoading, setIsEmailHistoryLoading] = useState(false);
   const [emailHistoryError, setEmailHistoryError] = useState('');
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [announcementForm, setAnnouncementForm] = useState<AnnouncementFormState>(() => createDefaultAnnouncementForm());
+  const [announcementFormErrors, setAnnouncementFormErrors] = useState<AnnouncementFormErrors>({});
+  const [isAnnouncementLoading, setIsAnnouncementLoading] = useState(false);
+  const [isSavingAnnouncement, setIsSavingAnnouncement] = useState(false);
+  const [announcementPreview, setAnnouncementPreview] = useState<AnnouncementFormState | null>(null);
 
   // Real-time admins listener and seeding on Firestore
   useEffect(() => {
@@ -1249,6 +1379,187 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
     }
   }, [activeTab, currentUser?.id, currentUser?.username, language]);
 
+  const loadAnnouncements = async () => {
+    const adminPayload = getCurrentAdminAuthPayload();
+    if (!adminPayload) return;
+
+    setIsAnnouncementLoading(true);
+    try {
+      const listAnnouncements = httpsCallable(functions, 'listAnnouncements');
+      const response = await listAnnouncements({ admin: adminPayload });
+      const data = response.data as { announcements?: unknown[] };
+      const nextAnnouncements = Array.isArray(data.announcements)
+        ? data.announcements.map(normalizeAnnouncementRecord)
+        : [];
+      nextAnnouncements.sort((a, b) => {
+        if (b.priority !== a.priority) return b.priority - a.priority;
+        return b.updatedAt && a.updatedAt
+          ? new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+          : b.startAt.getTime() - a.startAt.getTime();
+      });
+      setAnnouncements(nextAnnouncements);
+    } catch (error) {
+      console.error('Failed to load announcements', error);
+      showNotification(`Announcement load failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+    } finally {
+      setIsAnnouncementLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser && activeTab === 'announcements') {
+      void loadAnnouncements();
+    }
+  }, [activeTab, currentUser?.id, currentUser?.username]);
+
+  const validateAnnouncementForm = (form: AnnouncementFormState): AnnouncementFormErrors => {
+    const errors: AnnouncementFormErrors = {};
+    const title = form.title.trim();
+    const message = form.message.trim();
+    const startAt = new Date(form.startAt);
+    const endAt = new Date(form.endAt);
+    const priority = Number(form.priority);
+
+    if (!title) errors.title = 'Title is required.';
+    if (title.length > 160) errors.title = 'Title must be 160 characters or fewer.';
+    if (!message) errors.message = 'Message is required.';
+    if (message.length > 2000) errors.message = 'Message must be 2,000 characters or fewer.';
+    if (!ANNOUNCEMENT_CATEGORY_OPTIONS.some(option => option.value === form.category)) errors.category = 'Select a valid icon category.';
+    if (!form.startAt || Number.isNaN(startAt.getTime())) errors.startAt = 'Start date and time is required.';
+    if (!form.endAt || Number.isNaN(endAt.getTime())) errors.endAt = 'End date and time is required.';
+    if (!errors.startAt && !errors.endAt && endAt <= startAt) errors.endAt = 'End date must be after start date.';
+    if (!Number.isInteger(priority) || priority < 0 || priority > 9999) errors.priority = 'Priority must be 0-9999.';
+    if (form.targetPages.length === 0) errors.targetPages = 'Select at least one target page.';
+    if (form.buttonText.trim() && !form.buttonUrl.trim()) errors.buttonUrl = 'Button URL is required when button text is set.';
+    if (form.buttonUrl.trim() && !form.buttonText.trim()) errors.buttonText = 'Button text is required when button URL is set.';
+
+    const validateUrl = (value: string, field: keyof AnnouncementFormState, label: string) => {
+      const url = value.trim();
+      if (!url) return;
+      if (url.startsWith('/') && !url.startsWith('//')) return;
+      try {
+        const parsed = new URL(url);
+        if (parsed.protocol !== 'https:') {
+          errors[field] = `${label} must use HTTPS.`;
+        }
+      } catch {
+        errors[field] = `${label} must be a valid URL.`;
+      }
+    };
+
+    validateUrl(form.imageUrl, 'imageUrl', 'Image URL');
+    validateUrl(form.buttonUrl, 'buttonUrl', 'Button URL');
+
+    return errors;
+  };
+
+  const buildAnnouncementPayload = (form: AnnouncementFormState) => ({
+    id: form.id || undefined,
+    title: form.title.trim(),
+    message: form.message.trim(),
+    category: form.category,
+    imageUrl: form.imageUrl.trim(),
+    buttonText: form.buttonText.trim(),
+    buttonUrl: form.buttonUrl.trim(),
+    startAt: new Date(form.startAt).toISOString(),
+    endAt: new Date(form.endAt).toISOString(),
+    isActive: form.isActive,
+    showOnce: form.showOnce,
+    targetPages: form.targetPages,
+    audience: form.audience,
+    priority: Number(form.priority || 0),
+  });
+
+  const saveAnnouncementForm = async (nextForm: AnnouncementFormState = announcementForm) => {
+    const adminPayload = getCurrentAdminAuthPayload();
+    if (!adminPayload) return false;
+
+    const errors = validateAnnouncementForm(nextForm);
+    setAnnouncementFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      showNotification('Fix announcement form errors before saving.', 'error');
+      return false;
+    }
+
+    setIsSavingAnnouncement(true);
+    try {
+      const saveAnnouncement = httpsCallable(functions, 'saveAnnouncement');
+      const response = await saveAnnouncement({
+        admin: adminPayload,
+        announcement: buildAnnouncementPayload(nextForm),
+      });
+      const data = response.data as { announcement?: unknown };
+      const saved = normalizeAnnouncementRecord(data.announcement);
+      setAnnouncementForm(announcementToForm(saved));
+      setAnnouncementFormErrors({});
+      showNotification(saved.isActive ? 'Announcement published.' : 'Announcement saved.', 'success');
+      await loadAnnouncements();
+      return true;
+    } catch (error) {
+      console.error('Announcement save failed', error);
+      showNotification(`Announcement save failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+      return false;
+    } finally {
+      setIsSavingAnnouncement(false);
+    }
+  };
+
+  const handleAnnouncementSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    void saveAnnouncementForm();
+  };
+
+  const handleAnnouncementStatusChange = (announcement: Announcement, isActive: boolean) => {
+    void saveAnnouncementForm({
+      ...announcementToForm(announcement),
+      isActive,
+    });
+  };
+
+  const handleDeleteAnnouncement = (announcement: Announcement) => {
+    const adminPayload = getCurrentAdminAuthPayload();
+    if (!adminPayload) return;
+
+    setConfirmModal({
+      isOpen: true,
+      title: 'Delete Announcement',
+      message: `Delete "${announcement.title}"? This cannot be undone.`,
+      isDanger: true,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      onConfirm: async () => {
+        try {
+          const deleteAnnouncement = httpsCallable(functions, 'deleteAnnouncement');
+          await deleteAnnouncement({ admin: adminPayload, id: announcement.id });
+          showNotification('Announcement deleted.', 'success');
+          setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          if (announcementForm.id === announcement.id) {
+            setAnnouncementForm(createDefaultAnnouncementForm());
+          }
+          await loadAnnouncements();
+        } catch (error) {
+          console.error('Announcement delete failed', error);
+          showNotification(`Announcement delete failed: ${error instanceof Error ? error.message : String(error)}`, 'error');
+        }
+      },
+    });
+  };
+
+  const toggleAnnouncementTargetPage = (targetPage: string) => {
+    setAnnouncementForm(prev => {
+      if (targetPage === 'all') {
+        return { ...prev, targetPages: ['all'] };
+      }
+
+      const withoutAll = prev.targetPages.filter(page => page !== 'all');
+      const nextPages = withoutAll.includes(targetPage)
+        ? withoutAll.filter(page => page !== targetPage)
+        : [...withoutAll, targetPage];
+
+      return { ...prev, targetPages: nextPages.length > 0 ? nextPages : ['all'] };
+    });
+  };
+
   const isYageoEmailAddress = (email: string) => /^[^\s@]+@yageo\.com$/i.test(email.trim());
 
   const sortedInternalBookingOptions = useMemo(() => (
@@ -1637,6 +1948,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         >
           <Mail className="w-4 h-4 mr-2" />
           {t.emailHistoryTab}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('announcements')}
+          className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all flex items-center whitespace-nowrap ${activeTab === 'announcements' ? 'bg-brand-50 text-brand-700 shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+        >
+          <Megaphone className="w-4 h-4 mr-2" />
+          Announcements
         </button>
 
         <button
@@ -2408,6 +2727,215 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
         </div>
       )}
 
+      {activeTab === 'announcements' && (
+        <div className="space-y-5 text-slate-800 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h2 className="font-bold text-slate-900 flex items-center">
+                  <Megaphone className="w-4 h-4 mr-2 text-brand-500" />
+                  Announcement Modal
+                </h2>
+                <p className="text-xs text-slate-500 font-medium mt-1">Create scheduled website announcements with page, audience, and priority targeting.</p>
+              </div>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => void loadAnnouncements()} disabled={isAnnouncementLoading} className="inline-flex items-center justify-center px-3 py-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-bold disabled:opacity-60">
+                  <RefreshCw className={`w-4 h-4 mr-1.5 ${isAnnouncementLoading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+                <button type="button" onClick={() => { setAnnouncementForm(createDefaultAnnouncementForm()); setAnnouncementFormErrors({}); }} className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-brand-500 text-white hover:bg-brand-600 text-xs font-bold">
+                  <Plus className="w-4 h-4 mr-1.5" />
+                  New
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)] gap-5 p-5">
+              <form onSubmit={handleAnnouncementSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Announcement title <span className="text-rose-500">*</span></label>
+                    <input value={announcementForm.title} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, title: event.target.value }))} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${announcementFormErrors.title ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} maxLength={160} />
+                    {announcementFormErrors.title && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.title}</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Message <span className="text-rose-500">*</span></label>
+                    <textarea value={announcementForm.message} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, message: event.target.value }))} className={`w-full min-h-[120px] px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium resize-y ${announcementFormErrors.message ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} maxLength={2000} />
+                    {announcementFormErrors.message && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.message}</p>}
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-600 mb-2">Decorate icon category</label>
+                    <div className="grid grid-cols-2 gap-2 lg:grid-cols-3">
+                      {ANNOUNCEMENT_CATEGORY_OPTIONS.map(option => {
+                        const Icon = option.Icon;
+                        const isSelected = announcementForm.category === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setAnnouncementForm(prev => ({ ...prev, category: option.value }))}
+                            className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${isSelected ? `${option.badgeClass} ring-2 ring-offset-1 ring-brand-300` : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'}`}
+                          >
+                            <span className={`inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${isSelected ? option.iconClass : 'bg-slate-100 text-slate-500'}`}>
+                              <Icon className="h-4 w-4" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-sm font-black">{option.label}</span>
+                              <span className="block truncate text-[11px] font-bold opacity-70">{option.helper}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {announcementFormErrors.category && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.category}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Optional image URL</label>
+                    <input value={announcementForm.imageUrl} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, imageUrl: event.target.value }))} placeholder="https://... or /image.png" className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${announcementFormErrors.imageUrl ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} />
+                    {announcementFormErrors.imageUrl && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.imageUrl}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Priority</label>
+                    <input type="number" min={0} max={9999} step={1} value={announcementForm.priority} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, priority: event.target.value }))} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${announcementFormErrors.priority ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} />
+                    {announcementFormErrors.priority && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.priority}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Button text</label>
+                    <input value={announcementForm.buttonText} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, buttonText: event.target.value }))} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${announcementFormErrors.buttonText ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} maxLength={80} />
+                    {announcementFormErrors.buttonText && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.buttonText}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Button URL</label>
+                    <input value={announcementForm.buttonUrl} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, buttonUrl: event.target.value }))} placeholder="https://... or /dashboard" className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-medium ${announcementFormErrors.buttonUrl ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} />
+                    {announcementFormErrors.buttonUrl && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.buttonUrl}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">Start date and time <span className="text-rose-500">*</span></label>
+                    <input type="datetime-local" value={announcementForm.startAt} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, startAt: event.target.value }))} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-semibold ${announcementFormErrors.startAt ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} />
+                    {announcementFormErrors.startAt && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.startAt}</p>}
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 mb-1">End date and time <span className="text-rose-500">*</span></label>
+                    <input type="datetime-local" value={announcementForm.endAt} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, endAt: event.target.value }))} className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 font-semibold ${announcementFormErrors.endAt ? 'border-rose-300 focus:ring-rose-500' : 'border-slate-300 focus:ring-brand-500'}`} />
+                    {announcementFormErrors.endAt && <p className="mt-1 text-xs font-semibold text-rose-600">{announcementFormErrors.endAt}</p>}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="text-xs font-bold text-slate-600 mb-3">Status</div>
+                    <label className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={announcementForm.isActive} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, isActive: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-500" />Active / published</label>
+                    <label className="mt-3 flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={announcementForm.showOnce} onChange={(event) => setAnnouncementForm(prev => ({ ...prev, showOnce: event.target.checked }))} className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-500" />Show once per user</label>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="text-xs font-bold text-slate-600 mb-3">Target audience</div>
+                    <div className="space-y-2">
+                      {ANNOUNCEMENT_AUDIENCE_OPTIONS.map(option => (
+                        <label key={option.value} className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="radio" name="announcement-audience" value={option.value} checked={announcementForm.audience === option.value} onChange={() => setAnnouncementForm(prev => ({ ...prev, audience: option.value }))} className="h-4 w-4 border-slate-300 text-brand-500 focus:ring-brand-500" />{option.label}</label>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4">
+                    <div className="text-xs font-bold text-slate-600 mb-3">Target pages</div>
+                    <div className="grid grid-cols-1 gap-2">
+                      {ANNOUNCEMENT_TARGET_OPTIONS.map(option => (
+                        <label key={option.value} className="flex items-center gap-2 text-sm font-bold text-slate-700"><input type="checkbox" checked={announcementForm.targetPages.includes(option.value)} onChange={() => toggleAnnouncementTargetPage(option.value)} className="h-4 w-4 rounded border-slate-300 text-brand-500 focus:ring-brand-500" />{option.label}</label>
+                      ))}
+                    </div>
+                    {announcementFormErrors.targetPages && <p className="mt-2 text-xs font-semibold text-rose-600">{announcementFormErrors.targetPages}</p>}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row gap-3 pt-2">
+                  <button type="submit" disabled={isSavingAnnouncement} className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg bg-brand-500 text-white hover:bg-brand-600 transition-colors font-bold disabled:opacity-60 disabled:cursor-wait">{isSavingAnnouncement ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Save className="w-4 h-4 mr-2" />}{announcementForm.id ? 'Save changes' : 'Create announcement'}</button>
+                  <button type="button" onClick={() => setAnnouncementPreview(announcementForm)} className="inline-flex items-center justify-center px-4 py-2.5 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors font-bold"><Eye className="w-4 h-4 mr-2" />Preview</button>
+                </div>
+              </form>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 h-fit">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">Live Preview</div>
+                <div className="rounded-2xl bg-white shadow-lg border border-slate-200 overflow-hidden">
+                  {announcementForm.imageUrl && <img src={announcementForm.imageUrl} alt="" className="h-40 w-full object-cover bg-slate-100" />}
+                  <div className="p-5">
+                    {(() => {
+                      const meta = getAnnouncementCategoryMeta(announcementForm.category);
+                      const Icon = meta.Icon;
+                      return (
+                        <div className={`inline-flex items-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide mb-3 ${meta.badgeClass}`}>
+                          <span className={`mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full ${meta.iconClass}`}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </span>
+                          {meta.label}
+                        </div>
+                      );
+                    })()}
+                    <h3 className="text-xl font-black text-slate-900 break-words">{announcementForm.title || 'Announcement title'}</h3>
+                    <p className="mt-2 whitespace-pre-line text-sm font-semibold leading-6 text-slate-600 break-words">{announcementForm.message || 'Message preview appears here.'}</p>
+                    {announcementForm.buttonText && <div className={`mt-4 inline-flex rounded-lg px-4 py-2 text-sm font-bold text-white ${getAnnouncementCategoryMeta(announcementForm.category).ctaClass}`}>{announcementForm.buttonText}</div>}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between">
+              <h3 className="font-bold text-slate-900">All announcements</h3>
+              <span className="text-xs font-bold text-slate-400">{announcements.length} total</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1080px] text-sm text-left">
+                <thead className="bg-slate-50 text-slate-500 font-bold border-b border-slate-200">
+                  <tr><th className="px-5 py-3">Title</th><th className="px-5 py-3">Category</th><th className="px-5 py-3">Status</th><th className="px-5 py-3">Schedule</th><th className="px-5 py-3">Audience</th><th className="px-5 py-3">Pages</th><th className="px-5 py-3">Priority</th><th className="px-5 py-3 text-right">Actions</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium">
+                  {announcements.length === 0 ? (
+                    <tr><td colSpan={8} className="px-5 py-8 text-center text-slate-400 font-bold">{isAnnouncementLoading ? 'Loading announcements...' : 'No announcements yet.'}</td></tr>
+                  ) : announcements.map(announcement => {
+                    const now = Date.now();
+                    const isScheduled = announcement.startAt.getTime() > now;
+                    const isExpired = announcement.endAt.getTime() < now;
+                    const statusLabel = !announcement.isActive ? 'Inactive' : isScheduled ? 'Scheduled' : isExpired ? 'Expired' : 'Live';
+                    const statusClass = statusLabel === 'Live' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' : statusLabel === 'Scheduled' ? 'bg-blue-100 text-blue-800 border-blue-200' : statusLabel === 'Expired' ? 'bg-slate-100 text-slate-600 border-slate-200' : 'bg-amber-100 text-amber-800 border-amber-200';
+                    const categoryMeta = getAnnouncementCategoryMeta(announcement.category);
+                    const CategoryIcon = categoryMeta.Icon;
+                    return (
+                      <tr key={announcement.id} className="hover:bg-slate-50">
+                        <td className="px-5 py-4"><div className="font-bold text-slate-900 max-w-[260px] truncate">{announcement.title}</div><div className="text-xs text-slate-400 font-mono mt-0.5">{announcement.id}</div></td>
+                        <td className="px-5 py-4"><span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-bold ${categoryMeta.badgeClass}`}><CategoryIcon className="mr-1.5 h-3.5 w-3.5" />{categoryMeta.label}</span></td>
+                        <td className="px-5 py-4"><span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-bold ${statusClass}`}>{statusLabel}</span></td>
+                        <td className="px-5 py-4 text-xs text-slate-600 font-bold"><div>{formatDate(announcement.startAt, language)} {announcement.startAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div><div className="text-slate-400">to {formatDate(announcement.endAt, language)} {announcement.endAt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}</div></td>
+                        <td className="px-5 py-4 text-xs font-bold text-slate-600">{announcement.audience}</td>
+                        <td className="px-5 py-4 text-xs font-bold text-slate-600 max-w-[180px] truncate">{announcement.targetPages.join(', ')}</td>
+                        <td className="px-5 py-4 text-xs font-black text-slate-800">{announcement.priority}</td>
+                        <td className="px-5 py-4">
+                          <div className="flex justify-end gap-1">
+                            <button type="button" onClick={() => setAnnouncementPreview(announcementToForm(announcement))} className="p-2 rounded-lg text-slate-400 hover:text-sky-600 hover:bg-sky-50" title="Preview"><Eye className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => { setAnnouncementForm(announcementToForm(announcement)); setAnnouncementFormErrors({}); }} className="p-2 rounded-lg text-slate-400 hover:text-brand-600 hover:bg-brand-50" title="Edit"><Edit className="w-4 h-4" /></button>
+                            <button type="button" onClick={() => handleAnnouncementStatusChange(announcement, !announcement.isActive)} className={`p-2 rounded-lg ${announcement.isActive ? 'text-slate-400 hover:text-amber-600 hover:bg-amber-50' : 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50'}`} title={announcement.isActive ? 'Disable' : 'Publish'}>{announcement.isActive ? <XCircle className="w-4 h-4" /> : <Check className="w-4 h-4" />}</button>
+                            <button type="button" onClick={() => handleDeleteAnnouncement(announcement)} className="p-2 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50" title="Delete"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'tools' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800 animate-in fade-in zoom-in-95 duration-200">
           <div className="p-5 border-b border-slate-200">
@@ -2474,7 +3002,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                   ) : (
                     forceEmailBookingOptions.map((booking) => (
                       <option key={booking.id} value={booking.id}>
-                        {`${formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} | ${formatTimeRange(booking.startTime, booking.endTime)} | ${getRoomName(booking.roomId)} | ${booking.email || '-'} | ${translateText(booking.title, language)}`}
+                        {`${formatDate(booking.startTime, language, { weekday: undefined, month: 'short', day: 'numeric', year: 'numeric' })} | ${formatTimeRange(booking.startTime, booking.endTime, language)} | ${getRoomName(booking.roomId)} | ${booking.email || '-'} | ${translateText(booking.title, language)}`}
                       </option>
                     ))
                   )}
@@ -3278,6 +3806,51 @@ const AdminPanel: React.FC<AdminPanelProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {announcementPreview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl border border-white/20">
+            {announcementPreview.imageUrl && (
+              <img src={announcementPreview.imageUrl} alt="" className="h-56 w-full object-cover bg-slate-100" />
+            )}
+            <div className="p-6">
+              {(() => {
+                const meta = getAnnouncementCategoryMeta(announcementPreview.category);
+                const Icon = meta.Icon;
+                return (
+                  <div className={`mb-4 inline-flex items-center rounded-full border px-3 py-1.5 text-[10px] font-black uppercase tracking-wide ${meta.badgeClass}`}>
+                    <span className={`mr-2 inline-flex h-5 w-5 items-center justify-center rounded-full ${meta.iconClass}`}>
+                      <Icon className="h-3.5 w-3.5" />
+                    </span>
+                    {meta.label}
+                  </div>
+                );
+              })()}
+              <h3 className="text-2xl font-black text-slate-900 break-words">{announcementPreview.title || 'Announcement title'}</h3>
+              <p className="mt-3 whitespace-pre-line text-sm font-semibold leading-6 text-slate-600 break-words">{announcementPreview.message || 'Message preview appears here.'}</p>
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setAnnouncementPreview(null)}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-50"
+                >
+                  Close
+                </button>
+                {announcementPreview.buttonText && (
+                  <a
+                    href={announcementPreview.buttonUrl || '#'}
+                    target={announcementPreview.buttonUrl.startsWith('http') ? '_blank' : undefined}
+                    rel={announcementPreview.buttonUrl.startsWith('http') ? 'noreferrer' : undefined}
+                    className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-bold text-white ${getAnnouncementCategoryMeta(announcementPreview.category).ctaClass}`}
+                  >
+                    {announcementPreview.buttonText}
+                  </a>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
